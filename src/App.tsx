@@ -8,11 +8,13 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import SymptomChecker from "./pages/SymptomChecker";
+import DiseasePredictor from "./pages/DiseasePredictor";
 import HealthChatbot from "./pages/HealthChatbot";
 import HospitalFinder from "./pages/HospitalFinder";
 import DietPlanner from "./pages/DietPlanner";
 import HealthHistory from "./pages/HealthHistory";
 import Profile from "./pages/Profile";
+import MedicineRecommender from "./pages/MedicineRecommender";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,11 +31,13 @@ const App = () => (
           <Route path="/register" element={<Register />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/symptom-checker" element={<SymptomChecker />} />
+          <Route path="/disease-predictor" element={<DiseasePredictor />} />
           <Route path="/health-chatbot" element={<HealthChatbot />} />
           <Route path="/hospital-finder" element={<HospitalFinder />} />
           <Route path="/diet-planner" element={<DietPlanner />} />
           <Route path="/health-history" element={<HealthHistory />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/medicine-recommender" element={<MedicineRecommender />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
