@@ -1,118 +1,65 @@
-# Disease Predictor Setup Guide
+# Disease Predictor Streamlit App
 
-## Overview
-The Disease Predictor is a machine learning-powered application that provides predictions for:
-- **Diabetes** - Based on medical parameters like glucose levels, BMI, age, etc.
-- **Heart Disease** - Using cardiovascular health indicators
-- **Parkinson's Disease** - Based on voice and movement patterns
+This folder contains a standalone Streamlit application that predicts diabetes,
+heart disease and Parkinson's disease using pre-trained ML models. The main
+script is `app.py` and dependencies are listed in `requirements.txt`.
 
-## Integration with HealthAI React App
+## Step-by-step deployment guide
 
-The Disease Predictor runs as a separate Streamlit server and is embedded in the React application via iframe.
+Follow these instructions to run or deploy the app.
 
-## Quick Start (Recommended)
+### 1. Prepare the repository
 
-### Method 1: Batch File (Windows)
-1. Double-click `start-disease-predictor.bat` in the project root
-2. Wait for the server to start (you'll see "Local URL: http://localhost:8505")
-3. Open your React app and navigate to Disease Predictor
-4. The app will automatically detect and embed the Streamlit interface
+1. Open a terminal and navigate to the app directory:
+   ```powershell
+   cd "Disease ML Model\multiple-disease-prediction-streamlit-app"
+   ```
+2. Ensure the following items are committed to GitHub:
+   - `app.py`
+   - `requirements.txt`
+   - `saved_models/` directory containing `.sav` files
 
-### Method 2: Manual Terminal
-```bash
-# Open a new terminal/command prompt
-cd "Disease ML Model/multiple-disease-prediction-streamlit-app"
-streamlit run app.py --server.port 8505 --server.headless true
+### 2. Local testing
+
+1. (Optional) create a virtual environment and activate it:
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\activate
+   ```
+2. Install dependencies:
+   ```powershell
+   pip install -r requirements.txt
+   ```
+3. Launch the app:
+   ```powershell
+   streamlit run app.py
+   ```
+4. Browse to `http://localhost:8501` and verify the three prediction pages work.
+
+### 3. Deploy to Streamlit Cloud
+
+1. Push your repository branch to GitHub (create a new repo if needed).
+2. Go to <https://streamlit.io/cloud> and log in with GitHub.
+3. Click **New app** and select the repository and branch.
+4. In the "Main file" box enter `app.py` and set the folder to
+   `Disease ML Model/multiple-disease-prediction-streamlit-app` if necessary.
+5. Click **Deploy**. The service will install requirements and start the app.
+6. Copy the generated public URL to share or test.
+
+### 4. Updating the app
+
+- Make changes locally, commit and push to GitHub.
+- Streamlit Cloud will auto‑rebuild on new commits. Alternatively, use the
+  dashboard "Deploy" button to trigger a rebuild.
+
+### 5. Alternative hosts
+
+The app can also be hosted on other providers using a `Procfile`:
 ```
-
-### Method 3: Node.js Manager (Advanced)
-```bash
-# Start the server
-node streamlit-manager.js start
-
-# Check status
-node streamlit-manager.js status
-
-# Stop the server
-node streamlit-manager.js stop
+web: streamlit run app.py --server.port=$PORT
 ```
+Deploy using Heroku, Railway, etc., following their Python deployment guides.
 
-## Troubleshooting
+---
 
-### "localhost refused to load" Error
-This means the Streamlit server isn't running. Follow these steps:
-
-1. **Check if server is running:**
-   - Open http://localhost:8505 in your browser
-   - If it loads, the server is running - refresh the React app
-   - If it doesn't load, start the server using one of the methods above
-
-2. **Port conflicts:**
-   - Make sure nothing else is using port 8505
-   - You can change the port in the commands above if needed
-
-3. **Python/Dependencies issues:**
-   - Ensure Python 3.7+ is installed
-   - Required packages: streamlit, scikit-learn, numpy
-   - The batch file will automatically install missing packages
-
-### React App Integration Issues
-- The React component automatically checks server status every 10 seconds
-- Click "Check Status" button to manually verify connection
-- Use "Open Standalone" to test the Streamlit app directly
-
-## File Structure
-```
-Disease ML Model/
-└── multiple-disease-prediction-streamlit-app/
-    ├── app.py                 # Main Streamlit application
-    ├── saved_models/          # Trained ML models (.sav files)
-    ├── dataset/              # Training datasets
-    └── requirements.txt      # Python dependencies
-```
-
-## Technical Details
-
-### ML Models
-- **Diabetes Model**: Trained on Pima Indians Diabetes dataset
-- **Heart Disease Model**: Based on Cleveland Heart Disease dataset
-- **Parkinson's Model**: Uses voice recording features
-
-### Streamlit Configuration
-- **Port**: 8505 (configurable)
-- **Mode**: Headless (no browser auto-open)
-- **Theme**: Default Streamlit theme
-
-### React Integration
-- **Component**: `src/pages/DiseasePredictor.tsx`
-- **Connection Check**: Automatic every 10 seconds
-- **Fallback**: Direct link to standalone app
-- **Error Handling**: Graceful degradation when server unavailable
-
-## Development
-
-### Adding New Models
-1. Train your model and save as `.sav` file
-2. Add model loading in `app.py`
-3. Create prediction interface in Streamlit
-4. Update the sidebar navigation
-
-### Customizing the Interface
-- Edit `app.py` for Streamlit UI changes
-- Modify `DiseasePredictor.tsx` for React integration changes
-- Update `streamlit-manager.js` for server management
-
-## Important Notes
-
-⚠️ **Medical Disclaimer**: The predictions are for educational purposes only and should not replace professional medical advice, diagnosis, or treatment.
-
-🔒 **Data Privacy**: All predictions are processed locally. No data is sent to external servers.
-
-📊 **Accuracy**: Model accuracy varies. Always consult healthcare professionals for medical decisions.
-
-## Support
-If you encounter issues:
-1. Check the troubleshooting section above
-2. Verify all dependencies are installed
-3. Ensure the Streamlit server is running on the correct port
-4. Check browser console for any CORS or network errors
+Feel free to adjust these steps or ask for help with any of them!
