@@ -14,7 +14,113 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      medications: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          dosage: string
+          frequency: string
+          reason: string | null
+          reminder_times: string[]
+          notes: string | null
+          start_date: string
+          created_at: string
+          updated_at: string
+          is_active: boolean
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          dosage: string
+          frequency?: string
+          reason?: string | null
+          reminder_times: string[]
+          notes?: string | null
+          start_date?: string
+          created_at?: string
+          updated_at?: string
+          is_active?: boolean
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          dosage?: string
+          frequency?: string
+          reason?: string | null
+          reminder_times?: string[]
+          notes?: string | null
+          start_date?: string
+          created_at?: string
+          updated_at?: string
+          is_active?: boolean
+        }
+      }
+      medication_logs: {
+        Row: {
+          id: string
+          medication_id: string
+          user_id: string
+          log_date: string
+          reminder_time: string
+          taken: boolean
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          medication_id: string
+          user_id: string
+          log_date: string
+          reminder_time: string
+          taken?: boolean
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          medication_id?: string
+          user_id?: string
+          log_date?: string
+          reminder_time?: string
+          taken?: boolean
+          notes?: string | null
+          created_at?: string
+        }
+      }
+      user_activity_logs: {
+        Row: {
+          id: string
+          user_id: string
+          type: string
+          path: string | null
+          status: string
+          details: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          type: string
+          path?: string | null
+          status?: string
+          details?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          type?: string
+          path?: string | null
+          status?: string
+          details?: Json | null
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

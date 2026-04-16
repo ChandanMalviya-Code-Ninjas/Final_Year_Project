@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,25 +15,87 @@ const HealthHistory = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const symptoms = [
-    { id: "s1", date: "2025-10-05", time: "14:30", symptoms: "Headache, fever", diagnosis: "Common Cold", severity: "Low", temperature: "98.2°F", notes: "Doctor recommended rest and fluids" },
-    { id: "s2", date: "2025-09-28", time: "09:15", symptoms: "Sore throat, cough", diagnosis: "Viral Infection", severity: "Medium", temperature: "99.5°F", notes: "Prescribed antibiotics and cough syrup" },
-    { id: "s3", date: "2025-09-15", time: "16:45", symptoms: "Fatigue, dizziness", diagnosis: "Dehydration", severity: "Low", temperature: "98.0°F", notes: "Increased water intake recommended" },
-    { id: "s4", date: "2025-09-01", time: "11:20", symptoms: "Back pain", diagnosis: "Muscle Strain", severity: "Medium", temperature: "98.1°F", notes: "Physical therapy suggested" }
-  ];
+  const [symptoms, setSymptoms] = useState<any[]>([]);
+  const [consultations, setConsultations] = useState<any[]>([]);
+  const [dietPlans, setDietPlans] = useState<any[]>([]);
+  const [allLogs, setAllLogs] = useState<any[]>([]);
+  const [tableError, setTableError] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const consultations = [
-    { id: "c1", date: "2025-10-06", time: "15:00", topic: "Diet recommendations for weight loss", duration: "15 min", type: "Nutrition", messages: 12, satisfaction: "5/5" },
-    { id: "c2", date: "2025-10-03", time: "10:30", topic: "Exercise routine suggestions", duration: "12 min", type: "Fitness", messages: 8, satisfaction: "4/5" },
-    { id: "c3", date: "2025-09-29", time: "14:45", topic: "Managing stress and anxiety", duration: "18 min", type: "Mental Health", messages: 15, satisfaction: "5/5" },
-    { id: "c4", date: "2025-09-20", time: "09:00", topic: "Sleep improvement tips", duration: "10 min", type: "Wellness", messages: 6, satisfaction: "4/5" }
-  ];
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-  const dietPlans = [
-    { id: "d1", date: "2025-10-04", disease: "General Health", type: "Balanced", goal: "Weight Loss", calories: "1500-1800 kcal", meals: 4, saved: true },
-    { id: "d2", date: "2025-09-20", disease: "Diabetes", type: "Low Glycemic", goal: "Maintenance", calories: "1800-2200 kcal", meals: 4, saved: true },
-    { id: "d3", date: "2025-09-10", disease: "Heart Disease", type: "Low Sodium", goal: "Health", calories: "2000-2300 kcal", meals: 3, saved: false }
-  ];
+        const { data, error } = await supabase
+          .from('user_activity_logs')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        if (data) {
+          const logsData = data as any[];
+          setAllLogs(logsData);
+
+          setSymptoms(logsData.filter(log => log.type === "Symptom Check").map(log => ({
+            id: log.id,
+            date: new Date(log.created_at).toLocaleDateString(),
+            time: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            symptoms: log.details?.symptoms || "N/A",
+            diagnosis: log.details?.primaryDiagnosis || log.details?.diagnosis || log.details?.allConditions?.[0]?.name || "Symptom Analysis",
+            severity: (() => { const s = log.details?.primarySeverity || log.details?.severity || "medium"; return s.charAt(0).toUpperCase() + s.slice(1); })(),
+            allConditions: log.details?.allConditions || [],
+            recommendations: log.details?.recommendations || [],
+            notes: "Checked via Symptom Checker AI",
+            originalRecord: log
+          })));
+
+          setConsultations(logsData.filter(log => log.type === "Health Chat").map(log => ({
+            id: log.id,
+            date: new Date(log.created_at).toLocaleDateString(),
+            time: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            topic: log.details?.query || "Health Chat Conversation",
+            response: log.details?.response || "",
+            duration: log.details?.messageCount ? `${log.details.messageCount} messages` : "N/A",
+            type: "Wellness",
+            messages: log.details?.messageCount || 1,
+            originalRecord: log
+          })));
+
+          setDietPlans(logsData.filter(log => log.type === "Diet Plan Created").map(log => ({
+            id: log.id,
+            date: new Date(log.created_at).toLocaleDateString(),
+            time: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            disease: log.details?.disease || "General Health",
+            type: log.details?.dietType || log.details?.type || "Balanced",
+            calories: log.details?.calorieTarget || "Personalized",
+            totalCalories: log.details?.totalCalories || "N/A",
+            meals: log.details?.mealPlan?.length || 3,
+            mealPlan: log.details?.mealPlan || [],
+            nutritionTips: log.details?.nutritionTips || [],
+            saved: true,
+            originalRecord: log
+          })));
+        }
+      } catch (error) {
+        console.error("Error fetching health history:", error);
+        const err = error as any;
+        // PGRST205 = table not found — show setup banner, not error toast
+        if (err?.code === 'PGRST205' || err?.message?.includes('user_activity_logs')) {
+          setTableError(true);
+        } else {
+          toast.error("Failed to load health history");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHistory();
+  }, []);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -76,7 +139,7 @@ const HealthHistory = () => {
   };
 
   // Export functions
-  const exportAsJSON = (data: any, filename: string) => {
+  const exportAsJSON = (data: unknown, filename: string) => {
     const jsonString = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -90,7 +153,7 @@ const HealthHistory = () => {
     toast.success(`${filename} downloaded successfully`);
   };
 
-  const exportAsCSV = (data: any[], filename: string) => {
+  const exportAsCSV = (data: Record<string, unknown>[], filename: string) => {
     if (data.length === 0) {
       toast.error("No data to export");
       return;
@@ -135,13 +198,37 @@ const HealthHistory = () => {
 
   const downloadDietPlans = () => exportAsCSV(dietPlans, `diet-plans-${new Date().toISOString().split('T')[0]}.csv`);
 
-  const downloadRecord = (record: any, filename: string) => {
+  const downloadRecord = (record: unknown, filename: string) => {
     exportAsJSON(record, filename);
   };
 
-  const deleteRecord = (id: string, type: string) => {
-    toast.success(`${type} record deleted`);
+  const deleteRecord = async (id: string, type: string) => {
+    try {
+      const { error } = await supabase.from('user_activity_logs').delete().eq('id', id);
+      if (error) throw error;
+      
+      toast.success(`${type} record deleted`);
+      
+      // Update local state
+      if (type === "Symptom") setSymptoms(symptoms.filter(s => s.id !== id));
+      if (type === "Consultation") setConsultations(consultations.filter(c => c.id !== id));
+      if (type === "Diet Plan") setDietPlans(dietPlans.filter(d => d.id !== id));
+    } catch (error) {
+      console.error(`Error deleting ${type}:`, error);
+      toast.error(`Failed to delete ${type} record`);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500/30 border-t-blue-500 mx-auto mb-4" />
+          <p className="text-slate-500 text-sm font-medium">Loading your health history...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 p-4">
@@ -207,8 +294,20 @@ const HealthHistory = () => {
           </CardHeader>
         </Card>
 
+        {/* Setup error banner */}
+        {tableError && (
+          <Alert className="mb-6 bg-amber-50 border-amber-300">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-amber-800">
+              <strong>Database setup required:</strong> The <code>user_activity_logs</code> table is missing.
+              Go to <strong>Supabase → SQL Editor</strong> and run the SQL from{" "}
+              <code>supabase/migrations/create_user_activity_logs.sql</code> in your project to enable history tracking.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card className="shadow-lg border-blue-100/50">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -220,7 +319,6 @@ const HealthHistory = () => {
               </div>
             </CardContent>
           </Card>
-
           <Card className="shadow-lg border-purple-100/50">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -232,7 +330,6 @@ const HealthHistory = () => {
               </div>
             </CardContent>
           </Card>
-
           <Card className="shadow-lg border-green-100/50">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -244,13 +341,12 @@ const HealthHistory = () => {
               </div>
             </CardContent>
           </Card>
-
           <Card className="shadow-lg border-orange-100/50">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Avg. Satisfaction</p>
-                  <p className="text-3xl font-bold text-orange-600">4.5/5</p>
+                  <p className="text-sm text-muted-foreground">Total Activities</p>
+                  <p className="text-3xl font-bold text-orange-600">{allLogs.length}</p>
                 </div>
                 <TrendingUp className="h-10 w-10 text-orange-200" />
               </div>
@@ -262,19 +358,23 @@ const HealthHistory = () => {
         <Card className="shadow-xl border-blue-100/50">
           <CardContent className="pt-6">
             <Tabs defaultValue="symptoms" className="space-y-6">
-              <div className="flex items-center justify-between border-b">
-                <TabsList className="grid w-full grid-cols-3 max-w-md">
-                  <TabsTrigger value="symptoms" className="flex items-center gap-2">
-                    <Activity className="h-4 w-4" />
-                    <span className="hidden sm:inline">Health Checks</span>
+              <div className="flex items-center justify-between border-b pb-2">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="symptoms" className="flex items-center gap-1.5 text-xs sm:text-sm">
+                    <Activity className="h-3.5 w-3.5" />
+                    <span>Checks <span className="font-bold">({symptoms.length})</span></span>
                   </TabsTrigger>
-                  <TabsTrigger value="consultations" className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    <span className="hidden sm:inline">Consultations</span>
+                  <TabsTrigger value="consultations" className="flex items-center gap-1.5 text-xs sm:text-sm">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>Chats <span className="font-bold">({consultations.length})</span></span>
                   </TabsTrigger>
-                  <TabsTrigger value="diet" className="flex items-center gap-2">
-                    <Apple className="h-4 w-4" />
-                    <span className="hidden sm:inline">Diet Plans</span>
+                  <TabsTrigger value="diet" className="flex items-center gap-1.5 text-xs sm:text-sm">
+                    <Apple className="h-3.5 w-3.5" />
+                    <span>Diet <span className="font-bold">({dietPlans.length})</span></span>
+                  </TabsTrigger>
+                  <TabsTrigger value="all" className="flex items-center gap-1.5 text-xs sm:text-sm">
+                    <FileText className="h-3.5 w-3.5" />
+                    <span>All <span className="font-bold">({allLogs.length})</span></span>
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -297,8 +397,20 @@ const HealthHistory = () => {
                   </Button>
                 </div>
 
+                {symptoms.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="h-16 w-16 rounded-2xl bg-blue-100 flex items-center justify-center mb-4">
+                      <Activity className="h-8 w-8 text-blue-400" />
+                    </div>
+                    <p className="text-lg font-semibold text-slate-700 mb-1">No symptom checks yet</p>
+                    <p className="text-sm text-slate-400 mb-4">Use the Symptom Checker module and results will appear here automatically.</p>
+                    <Button variant="outline" size="sm" onClick={() => navigate("/symptom-checker")} className="gap-2">
+                      <Activity className="h-4 w-4" /> Go to Symptom Checker
+                    </Button>
+                  </div>
+                ) : (
                 <div className="space-y-3">
-                  {symptoms.map((record) => (
+                  {symptoms.filter(r => !searchTerm || r.diagnosis.toLowerCase().includes(searchTerm.toLowerCase()) || r.symptoms.toLowerCase().includes(searchTerm.toLowerCase())).map((record) => (
                     <div key={record.id} className="group">
                       <Card
                         className="shadow-md border-l-4 border-l-blue-500 hover:shadow-lg transition-all cursor-pointer overflow-hidden"
@@ -310,50 +422,50 @@ const HealthHistory = () => {
                               <div className="flex items-center gap-3 mb-2">
                                 <div className="flex items-center gap-2">
                                   {getSeverityIcon(record.severity)}
-                                  <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                                    {record.date} at {record.time}
-                                  </span>
+                                  <span className="text-sm font-semibold text-gray-600">{record.date} at {record.time}</span>
                                 </div>
-                                <Badge className={getSeverityColor(record.severity)}>
-                                  {record.severity}
-                                </Badge>
+                                <Badge className={getSeverityColor(record.severity)}>{record.severity}</Badge>
+                                <ChevronDown className={`h-4 w-4 text-slate-400 ml-auto transition-transform ${expandedId === record.id ? 'rotate-180' : ''}`} />
                               </div>
-                              <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1">
-                                {record.diagnosis}
-                              </h3>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">
-                                Symptoms: {record.symptoms}
-                              </p>
+                              <h3 className="font-bold text-lg text-gray-900 mb-1">{record.diagnosis}</h3>
+                              <p className="text-sm text-gray-500">Symptoms: {record.symptoms}</p>
                               {expandedId === record.id && (
-                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-2 animate-in fade-in">
-                                  <div className="grid grid-cols-2 gap-4">
+                                <div className="mt-4 pt-4 border-t border-gray-100 space-y-4 animate-in fade-in">
+                                  {record.allConditions.length > 0 && (
                                     <div>
-                                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Temperature</p>
-                                      <p className="text-sm font-medium">{record.temperature}</p>
+                                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">All Predicted Conditions</p>
+                                      <div className="space-y-1.5">
+                                        {record.allConditions.map((c: any, i: number) => (
+                                          <div key={i} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                                            <span className="text-sm font-medium text-slate-700">{c.name}</span>
+                                            <Badge className={getSeverityColor(c.severity || c.probability || 'Medium')}>{c.probability || c.severity}</Badge>
+                                          </div>
+                                        ))}
+                                      </div>
                                     </div>
+                                  )}
+                                  {record.recommendations.length > 0 && (
                                     <div>
-                                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Additional Notes</p>
-                                      <p className="text-sm">{record.notes}</p>
+                                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Recommendations</p>
+                                      <ul className="space-y-1">
+                                        {record.recommendations.map((rec: string, i: number) => (
+                                          <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                                            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                                            {rec}
+                                          </li>
+                                        ))}
+                                      </ul>
                                     </div>
-                                  </div>
+                                  )}
+                                  <p className="text-xs text-slate-400">{record.notes}</p>
                                 </div>
                               )}
                             </div>
-                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 w-8 p-0"
-                                onClick={() => downloadRecord(record, `symptom-${record.id}-${new Date().toISOString().split('T')[0]}.json`)}
-                              >
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2">
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => { e.stopPropagation(); downloadRecord(record, `symptom-${record.id}.json`); }}>
                                 <Download className="h-4 w-4 text-blue-500" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 w-8 p-0"
-                                onClick={() => deleteRecord(record.id, "Symptom")}
-                              >
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => { e.stopPropagation(); deleteRecord(record.id, "Symptom"); }}>
                                 <Trash2 className="h-4 w-4 text-red-500" />
                               </Button>
                             </div>
@@ -363,6 +475,7 @@ const HealthHistory = () => {
                     </div>
                   ))}
                 </div>
+                )}
               </TabsContent>
 
               {/* Consultations Tab */}
@@ -381,55 +494,51 @@ const HealthHistory = () => {
                   </Button>
                 </div>
 
+                {consultations.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="h-16 w-16 rounded-2xl bg-purple-100 flex items-center justify-center mb-4">
+                      <Clock className="h-8 w-8 text-purple-400" />
+                    </div>
+                    <p className="text-lg font-semibold text-slate-700 mb-1">No chat consultations yet</p>
+                    <p className="text-sm text-slate-400 mb-4">Ask a health question in the Health Chatbot and it will appear here.</p>
+                    <Button variant="outline" size="sm" onClick={() => navigate("/health-chatbot")} className="gap-2">
+                      <Clock className="h-4 w-4" /> Go to Health Chatbot
+                    </Button>
+                  </div>
+                ) : (
                 <div className="space-y-3">
                   {consultations.map((consultation) => (
                     <div key={consultation.id} className="group">
-                      <Card className="shadow-md border-l-4 border-l-purple-500 hover:shadow-lg transition-all cursor-pointer overflow-hidden">
+                      <Card
+                        className="shadow-md border-l-4 border-l-purple-500 hover:shadow-lg transition-all cursor-pointer overflow-hidden"
+                        onClick={() => setExpandedId(expandedId === consultation.id ? null : consultation.id)}
+                      >
                         <CardContent className="pt-4">
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
-                                <span className="text-sm font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-2">
-                                  <Calendar className="h-4 w-4" />
-                                  {consultation.date} at {consultation.time}
+                                <span className="text-sm font-semibold text-gray-600 flex items-center gap-2">
+                                  <Calendar className="h-4 w-4" />{consultation.date} at {consultation.time}
                                 </span>
-                                <Badge className={getTypeColor(consultation.type)}>
-                                  {consultation.type}
-                                </Badge>
+                                <Badge className={getTypeColor(consultation.type)}>{consultation.type}</Badge>
                               </div>
-                              <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-3">
-                                {consultation.topic}
-                              </h3>
-                              <div className="grid grid-cols-3 gap-4 text-sm">
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Duration</p>
-                                  <p className="font-medium">{consultation.duration}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Messages</p>
-                                  <p className="font-medium">{consultation.messages}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Satisfaction</p>
-                                  <p className="font-medium text-yellow-600">⭐ {consultation.satisfaction}</p>
-                                </div>
+                              <h3 className="font-bold text-base text-gray-900 mb-2 line-clamp-2">{consultation.topic}</h3>
+                              <div className="flex gap-4 text-xs text-slate-500">
+                                <span>💬 {consultation.messages} message(s)</span>
+                                <span>⏱ {consultation.duration}</span>
                               </div>
+                              {expandedId === consultation.id && consultation.response && (
+                                <div className="mt-3 pt-3 border-t border-slate-100 animate-in fade-in">
+                                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">AI Response</p>
+                                  <p className="text-sm text-slate-600 leading-relaxed line-clamp-6">{consultation.response}</p>
+                                </div>
+                              )}
                             </div>
-                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 w-8 p-0"
-                                onClick={() => downloadRecord(consultation, `consultation-${consultation.id}-${new Date().toISOString().split('T')[0]}.json`)}
-                              >
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => { e.stopPropagation(); downloadRecord(consultation, `chat-${consultation.id}.json`); }}>
                                 <Download className="h-4 w-4 text-blue-500" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 w-8 p-0"
-                                onClick={() => deleteRecord(consultation.id, "Consultation")}
-                              >
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => { e.stopPropagation(); deleteRecord(consultation.id, "Consultation"); }}>
                                 <Trash2 className="h-4 w-4 text-red-500" />
                               </Button>
                             </div>
@@ -439,6 +548,7 @@ const HealthHistory = () => {
                     </div>
                   ))}
                 </div>
+                )}
               </TabsContent>
 
               {/* Diet Plans Tab */}
@@ -457,61 +567,65 @@ const HealthHistory = () => {
                   </Button>
                 </div>
 
+                {dietPlans.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="h-16 w-16 rounded-2xl bg-green-100 flex items-center justify-center mb-4">
+                      <Apple className="h-8 w-8 text-green-400" />
+                    </div>
+                    <p className="text-lg font-semibold text-slate-700 mb-1">No diet plans yet</p>
+                    <p className="text-sm text-slate-400 mb-4">Generate a personalized meal plan in the Diet Planner.</p>
+                    <Button variant="outline" size="sm" onClick={() => navigate("/diet-planner")} className="gap-2">
+                      <Apple className="h-4 w-4" /> Go to Diet Planner
+                    </Button>
+                  </div>
+                ) : (
                 <div className="space-y-3">
                   {dietPlans.map((plan) => (
                     <div key={plan.id} className="group">
-                      <Card className="shadow-md border-l-4 border-l-green-500 hover:shadow-lg transition-all cursor-pointer overflow-hidden">
+                      <Card
+                        className="shadow-md border-l-4 border-l-green-500 hover:shadow-lg transition-all cursor-pointer overflow-hidden"
+                        onClick={() => setExpandedId(expandedId === plan.id ? null : plan.id)}
+                      >
                         <CardContent className="pt-4">
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
-                                <span className="text-sm font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-2">
-                                  <Calendar className="h-4 w-4" />
-                                  {plan.date}
+                                <span className="text-sm font-semibold text-gray-600 flex items-center gap-2">
+                                  <Calendar className="h-4 w-4" />{plan.date} at {plan.time}
                                 </span>
-                                {plan.saved && (
-                                  <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-                                    ✓ Saved
-                                  </Badge>
-                                )}
+                                <Badge variant="outline" className="bg-green-50 text-green-700">✓ Saved</Badge>
                               </div>
-                              <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-3">
-                                {plan.disease}
-                              </h3>
-                              <div className="grid grid-cols-4 gap-4 text-sm">
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Diet Type</p>
-                                  <p className="font-medium">{plan.type}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Goal</p>
-                                  <p className="font-medium">{plan.goal}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Calories</p>
-                                  <p className="font-medium">{plan.calories}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Meals</p>
-                                  <p className="font-medium">{plan.meals} meals/day</p>
-                                </div>
+                              <h3 className="font-bold text-lg text-gray-900 mb-2">{plan.disease}</h3>
+                              <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+                                <span>🥗 {plan.type}</span>
+                                <span>🔥 {plan.calories} cal target</span>
+                                <span>🍽 {plan.meals} meal sessions</span>
                               </div>
+                              {expandedId === plan.id && plan.mealPlan.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 animate-in fade-in">
+                                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Meal Plan</p>
+                                  {plan.mealPlan.map((meal: any, i: number) => (
+                                    <div key={i} className="bg-slate-50 rounded-lg p-3">
+                                      <p className="text-xs font-semibold text-slate-600 mb-1">{meal.time} · {meal.calories} kcal</p>
+                                      <p className="text-sm text-slate-700">{Array.isArray(meal.items) ? meal.items.join(', ') : meal.items}</p>
+                                    </div>
+                                  ))}
+                                  {plan.nutritionTips.length > 0 && (
+                                    <div className="mt-2">
+                                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Nutrition Tips</p>
+                                      {plan.nutritionTips.map((tip: string, i: number) => (
+                                        <p key={i} className="text-xs text-slate-500">• {tip}</p>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 w-8 p-0"
-                                onClick={() => downloadRecord(plan, `diet-plan-${plan.id}-${new Date().toISOString().split('T')[0]}.json`)}
-                              >
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => { e.stopPropagation(); downloadRecord(plan, `diet-${plan.id}.json`); }}>
                                 <Download className="h-4 w-4 text-blue-500" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 w-8 p-0"
-                                onClick={() => deleteRecord(plan.id, "Diet Plan")}
-                              >
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => { e.stopPropagation(); deleteRecord(plan.id, "Diet Plan"); }}>
                                 <Trash2 className="h-4 w-4 text-red-500" />
                               </Button>
                             </div>
@@ -521,6 +635,40 @@ const HealthHistory = () => {
                     </div>
                   ))}
                 </div>
+                )}
+              </TabsContent>
+
+              {/* All Activity Tab */}
+              <TabsContent value="all" className="space-y-4">
+                {allLogs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="h-16 w-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                      <FileText className="h-8 w-8 text-slate-400" />
+                    </div>
+                    <p className="text-lg font-semibold text-slate-700 mb-1">No activity recorded yet</p>
+                    <p className="text-sm text-slate-400">Start using any health module — every action is automatically saved here.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {allLogs.map((log) => (
+                      <div key={log.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
+                        <div className="h-9 w-9 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                          <Activity className="h-4 w-4 text-blue-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-800">{log.type}</p>
+                          <p className="text-xs text-slate-400">{new Date(log.created_at).toLocaleString()}</p>
+                        </div>
+                        <Badge variant="outline" className={log.status === 'Completed' ? 'text-green-700 border-green-300 bg-green-50' : 'text-blue-700 border-blue-300 bg-blue-50'}>
+                          {log.status}
+                        </Badge>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0" onClick={() => deleteRecord(log.id, log.type)}>
+                          <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </CardContent>

@@ -1,4 +1,4 @@
-project_id = "iubbxunkfldaavuzcuqt"
+project_id = "mrpxojsehcqdegiwudru"
 
 [functions.health-chat]
 verify_jwt = false
@@ -7,4 +7,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.diet-planner]
+verify_jwt = false
+
+[functions.medication-reminder-notification]
+verify_jwt = false
+
+[functions.medicine-recommender]
 verify_jwt = false

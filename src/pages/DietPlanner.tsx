@@ -3,21 +3,42 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, Apple, Loader2, AlertCircle, CheckCircle2, Droplet, Heart, Brain, X } from "lucide-react";
+import { ArrowLeft, Apple, Loader2, AlertCircle, CheckCircle2, Droplet, Heart, Brain, X, LucideIcon, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { logActivity } from "@/utils/analytics";
 
 interface DiseaseInfo {
-  icon: any;
+  icon: LucideIcon;
   color: string;
   bgColor: string;
   description: string;
   guidelines: string[];
   avoidFoods: string[];
+}
+
+interface MealItem {
+  name: string;
+  calories?: number;
+}
+
+interface Meal {
+  time: string;
+  items: string[];
+  calories: number;
+}
+
+interface DietPlan {
+  meals: Meal[];
+  tips: string[];
+  totalCalories: number;
+  guidelines?: string[];
+  avoidFoods?: string[];
 }
 
 const diseaseInfo: Record<string, DiseaseInfo> = {
@@ -64,15 +85,24 @@ const diseaseInfo: Record<string, DiseaseInfo> = {
       "Regular meal timing"
     ],
     avoidFoods: ["Iron supplements with L-dopa", "High-vitamin K foods with warfarin", "Hard/sticky foods"]
+  },
+  custom: {
+    icon: Sparkles,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50 dark:bg-amber-900/20",
+    description: "Enter your specific health condition below for a fully customized AI plan.",
+    guidelines: ["AI will generate custom nutritional guidelines based on your specific condition"],
+    avoidFoods: ["AI will determine critical foods to avoid based on your condition"]
   }
 };
 
 const DietPlanner = () => {
   const navigate = useNavigate();
   const [isGenerating, setIsGenerating] = useState(false);
-  const [dietPlan, setDietPlan] = useState<any>(null);
+  const [dietPlan, setDietPlan] = useState<DietPlan | null>(null);
   const [preferences, setPreferences] = useState({
     disease: "",
+    customDiseaseName: "",
     dietType: "",
     calories: ""
   });
@@ -82,18 +112,24 @@ const DietPlanner = () => {
       toast.error("Please fill in all preferences");
       return;
     }
+    
+    if (preferences.disease === "custom" && !preferences.customDiseaseName.trim()) {
+      toast.error("Please specify your custom condition");
+      return;
+    }
 
     setIsGenerating(true);
-    
+
     try {
       const disease = diseaseInfo[preferences.disease];
-      const preferencesText = `Disease: ${preferences.disease}, Diet: ${preferences.dietType}, Calories: ${preferences.calories}, Guidelines: ${disease.guidelines.join(", ")}, Avoid: ${disease.avoidFoods.join(", ")}`;
-      
+      const actualDiseaseName = preferences.disease === "custom" ? preferences.customDiseaseName : preferences.disease;
+      const preferencesText = `Disease: ${actualDiseaseName}, Diet: ${preferences.dietType}, Calories: ${preferences.calories}, Guidelines: ${disease.guidelines.join(", ")}, Avoid: ${disease.avoidFoods.join(", ")}`;
+
       const { data, error } = await supabase.functions.invoke('diet-planner', {
-        body: { 
+        body: {
           preferences: preferencesText,
           calorieTarget: preferences.calories,
-          disease: preferences.disease,
+          disease: actualDiseaseName,
           dietType: preferences.dietType
         }
       });
@@ -105,41 +141,53 @@ const DietPlanner = () => {
       if (data.mealPlan.breakfast) {
         meals.push({
           time: "🌅 Breakfast (8:00 AM)",
-          items: data.mealPlan.breakfast.map((m: any) => m.name),
-          calories: data.mealPlan.breakfast.reduce((sum: number, m: any) => sum + (m.calories || 0), 0)
+          items: data.mealPlan.breakfast.map((m: MealItem) => m.name),
+          calories: data.mealPlan.breakfast.reduce((sum: number, m: MealItem) => sum + (m.calories || 0), 0)
         });
       }
       if (data.mealPlan.lunch) {
         meals.push({
           time: "☀️ Lunch (1:00 PM)",
-          items: data.mealPlan.lunch.map((m: any) => m.name),
-          calories: data.mealPlan.lunch.reduce((sum: number, m: any) => sum + (m.calories || 0), 0)
+          items: data.mealPlan.lunch.map((m: MealItem) => m.name),
+          calories: data.mealPlan.lunch.reduce((sum: number, m: MealItem) => sum + (m.calories || 0), 0)
         });
       }
       if (data.mealPlan.snacks) {
         meals.push({
           time: "🥤 Snacks (4:00 PM)",
-          items: data.mealPlan.snacks.map((m: any) => m.name),
-          calories: data.mealPlan.snacks.reduce((sum: number, m: any) => sum + (m.calories || 0), 0)
+          items: data.mealPlan.snacks.map((m: MealItem) => m.name),
+          calories: data.mealPlan.snacks.reduce((sum: number, m: MealItem) => sum + (m.calories || 0), 0)
         });
       }
       if (data.mealPlan.dinner) {
         meals.push({
           time: "🌙 Dinner (7:00 PM)",
-          items: data.mealPlan.dinner.map((m: any) => m.name),
-          calories: data.mealPlan.dinner.reduce((sum: number, m: any) => sum + (m.calories || 0), 0)
+          items: data.mealPlan.dinner.map((m: MealItem) => m.name),
+          calories: data.mealPlan.dinner.reduce((sum: number, m: MealItem) => sum + (m.calories || 0), 0)
         });
       }
 
       setDietPlan({
         meals,
         tips: data.nutritionTips || [],
-        totalCalories: meals.reduce((sum, meal) => sum + meal.calories, 0)
+        totalCalories: meals.reduce((sum, meal) => sum + meal.calories, 0),
+        guidelines: data.guidelines,
+        avoidFoods: data.avoidFoods
       });
       toast.success("Diet plan generated successfully");
-    } catch (error: any) {
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          logActivity(user.id, "Diet Plan Created", "/diet-planner", "Active", { disease: preferences.disease, type: preferences.dietType });
+        }
+      } catch (err) {
+        console.error("Failed to log activity", err);
+      }
+    } catch (error: unknown) {
       console.error("Diet plan generation error:", error);
-      toast.error(error.message || "Failed to generate diet plan");
+      const message = error instanceof Error ? error.message : "Failed to generate diet plan";
+      toast.error(message);
     } finally {
       setIsGenerating(false);
     }
@@ -191,12 +239,11 @@ const DietPlanner = () => {
                       return (
                         <div
                           key={key}
-                          onClick={() => setPreferences({...preferences, disease: key})}
-                          className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                            preferences.disease === key
+                          onClick={() => setPreferences({ ...preferences, disease: key })}
+                          className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${preferences.disease === key
                               ? 'border-green-500 bg-green-50/50 dark:bg-green-900/20'
                               : 'border-gray-200 hover:border-green-300'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-3">
                             <IconComponent className={`h-5 w-5 ${info.color}`} />
@@ -207,6 +254,19 @@ const DietPlanner = () => {
                     })}
                   </div>
                 </div>
+
+                {/* Custom Disease Input */}
+                {preferences.disease === "custom" && (
+                  <div className="space-y-3 animate-fade-in-up">
+                    <Label className="text-base font-semibold text-amber-900 dark:text-amber-200">Specify Your Condition</Label>
+                    <Input
+                      placeholder="e.g. PCOS, Thyroid, Celiac Disease..." 
+                      value={preferences.customDiseaseName}
+                      onChange={(e) => setPreferences({ ...preferences, customDiseaseName: e.target.value })}
+                      className="border-2 border-amber-300 focus:ring-amber-500 dark:border-amber-700"
+                    />
+                  </div>
+                )}
 
                 {/* Disease Info */}
                 {preferences.disease && (
@@ -221,7 +281,7 @@ const DietPlanner = () => {
                 {/* Diet Type */}
                 <div className="space-y-3">
                   <Label className="text-base font-semibold">Diet Type</Label>
-                  <Select value={preferences.dietType} onValueChange={(value) => setPreferences({...preferences, dietType: value})}>
+                  <Select value={preferences.dietType} onValueChange={(value) => setPreferences({ ...preferences, dietType: value })}>
                     <SelectTrigger className="border-green-200 focus:ring-green-500">
                       <SelectValue placeholder="Choose diet type" />
                     </SelectTrigger>
@@ -238,7 +298,7 @@ const DietPlanner = () => {
                 {/* Calorie Target */}
                 <div className="space-y-3">
                   <Label className="text-base font-semibold">Daily Calorie Target</Label>
-                  <Select value={preferences.calories} onValueChange={(value) => setPreferences({...preferences, calories: value})}>
+                  <Select value={preferences.calories} onValueChange={(value) => setPreferences({ ...preferences, calories: value })}>
                     <SelectTrigger className="border-green-200 focus:ring-green-500">
                       <SelectValue placeholder="Select range" />
                     </SelectTrigger>
@@ -252,8 +312,8 @@ const DietPlanner = () => {
                   </Select>
                 </div>
 
-                <Button 
-                  onClick={handleGenerate} 
+                <Button
+                  onClick={handleGenerate}
                   disabled={isGenerating || !preferences.disease}
                   className="w-full bg-green-600 hover:bg-green-700 text-white py-6 text-lg font-semibold"
                 >
@@ -296,7 +356,7 @@ const DietPlanner = () => {
                     </CardHeader>
                     <CardContent className="pt-6">
                       <div className="space-y-4">
-                        {dietPlan.meals.map((meal: any, index: number) => (
+                        {dietPlan.meals.map((meal: Meal, index: number) => (
                           <div
                             key={index}
                             className="p-5 rounded-lg border-l-4 border-green-500 bg-gradient-to-r from-green-50/50 to-transparent dark:from-green-900/10 dark:to-transparent hover:shadow-md transition-shadow"
@@ -334,7 +394,7 @@ const DietPlanner = () => {
                         </CardHeader>
                         <CardContent className="pt-4">
                           <ul className="space-y-2">
-                            {diseaseInfo[preferences.disease].guidelines.map((guideline: string, i: number) => (
+                            {(dietPlan.guidelines || diseaseInfo[preferences.disease].guidelines).map((guideline: string, i: number) => (
                               <li key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
                                 <span className="text-blue-500 font-semibold mt-0.5">→</span>
                                 <span>{guideline}</span>
@@ -354,7 +414,7 @@ const DietPlanner = () => {
                         </CardHeader>
                         <CardContent className="pt-4">
                           <ul className="space-y-2">
-                            {diseaseInfo[preferences.disease].avoidFoods.map((food: string, i: number) => (
+                            {(dietPlan.avoidFoods || diseaseInfo[preferences.disease].avoidFoods).map((food: string, i: number) => (
                               <li key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
                                 <span className="text-red-500 font-semibold mt-0.5">✗</span>
                                 <span>{food}</span>

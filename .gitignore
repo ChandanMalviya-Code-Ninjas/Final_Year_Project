@@ -23,3 +23,15 @@ dist-ssr
 *.sln
 *.sw?
 .env
+.env.*
+
+# Supabase temp
+supabase/.temp/
+
+# Python
+.venv/
+__pycache__/
+
+# Test files
+test.json
+test_*.mjs

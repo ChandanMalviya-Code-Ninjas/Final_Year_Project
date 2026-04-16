@@ -1,860 +1,566 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  Home,
   Search,
   Pill,
   Leaf,
   Dumbbell,
   Lightbulb,
   Heart,
-  AlertCircle,
   ChevronLeft,
+  Loader2,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { logActivity } from "@/utils/analytics";
 
 interface DiseaseRecommendation {
   disease: string;
-  allopathic: Array<{
-    name: string;
-    dosage: string;
-    frequency: string;
-    notes: string;
-  }>;
-  ayurvedic: Array<{
-    name: string;
-    dosage: string;
-    frequency: string;
-    notes: string;
-  }>;
-  exercises: Array<{
-    name: string;
-    duration: string;
-    frequency: string;
-    benefits: string;
-  }>;
-  homeRemedies: Array<{
-    name: string;
-    ingredients: string;
-    preparation: string;
-    benefits: string;
-  }>;
+  image?: string;
+  allopathic: Array<{ name: string; dosage: string; frequency: string; notes: string }>;
+  ayurvedic: Array<{ name: string; dosage: string; frequency: string; notes: string }>;
+  exercises: Array<{ name: string; duration: string; frequency: string; benefits: string }>;
+  homeRemedies: Array<{ name: string; ingredients: string; preparation: string; benefits: string }>;
 }
 
-const medicineDatabase: DiseaseRecommendation[] = [
-  {
-    disease: "Diabetes",
-    allopathic: [
-      {
-        name: "Metformin",
-        dosage: "500-1000mg",
-        frequency: "2-3 times daily",
-        notes: "First-line treatment, reduces blood sugar by decreasing glucose production",
-      },
-      {
-        name: "Glibenclamide",
-        dosage: "2.5-5mg",
-        frequency: "Once daily",
-        notes: "Stimulates pancreas to release insulin",
-      },
-      {
-        name: "Insulin Therapy",
-        dosage: "Variable",
-        frequency: "As prescribed",
-        notes: "For type 1 or advanced type 2 diabetes",
-      },
-    ],
-    ayurvedic: [
-      {
-        name: "Neem",
-        dosage: "1-2 fresh leaves",
-        frequency: "Morning & evening",
-        notes: "Purifies blood, regulates blood sugar levels naturally",
-      },
-      {
-        name: "Karela (Bitter Gourd)",
-        dosage: "1 fresh fruit or juice",
-        frequency: "Daily morning",
-        notes: "Contains insulin-like compounds that reduce glucose",
-      },
-      {
-        name: "Fenugreek (Methi) Seeds",
-        dosage: "1 teaspoon",
-        frequency: "Daily in warm water",
-        notes: "Slows carbohydrate digestion and sugar absorption",
-      },
-      {
-        name: "Jamun (Black Plum)",
-        dosage: "4-5 fruits",
-        frequency: "Daily",
-        notes: "Ancient remedy for diabetes, contains tannins",
-      },
-    ],
-    exercises: [
-      {
-        name: "Brisk Walking",
-        duration: "30-45 minutes",
-        frequency: "Daily",
-        benefits: "Improves insulin sensitivity, burns calories, strengthens heart",
-      },
-      {
-        name: "Swimming",
-        duration: "30 minutes",
-        frequency: "3-4 times per week",
-        benefits: "Low-impact cardio, improves glucose control",
-      },
-      {
-        name: "Yoga (Surya Namaskar)",
-        duration: "15-20 minutes",
-        frequency: "Daily",
-        benefits: "Balances metabolism, reduces stress, improves flexibility",
-      },
-      {
-        name: "Strength Training",
-        duration: "20-30 minutes",
-        frequency: "3 times per week",
-        benefits: "Builds muscle, improves insulin sensitivity",
-      },
-    ],
-    homeRemedies: [
-      {
-        name: "Cinnamon & Honey",
-        ingredients: "1/2 teaspoon cinnamon powder, 1 teaspoon honey, warm water",
-        preparation: "Mix cinnamon in warm water, add honey, stir well",
-        benefits: "Improves insulin sensitivity, reduces fasting blood sugar",
-      },
-      {
-        name: "Apple Cider Vinegar",
-        ingredients: "2 tablespoons apple cider vinegar, 1 glass water",
-        preparation: "Dilute vinegar in water, consume before meals",
-        benefits: "Slows carb digestion, improves glucose control",
-      },
-      {
-        name: "Turmeric Milk",
-        ingredients: "1/2 teaspoon turmeric, 1 cup milk, 1 pinch black pepper",
-        preparation: "Heat milk, add turmeric and pepper, stir and drink warm",
-        benefits: "Anti-inflammatory, reduces insulin resistance",
-      },
-      {
-        name: "Ginger Tea",
-        ingredients: "1 inch fresh ginger, water, lemon juice",
-        preparation: "Boil ginger in water, strain, add fresh lemon juice",
-        benefits: "Aids digestion, improves glucose metabolism",
-      },
-    ],
-  },
-  {
-    disease: "Heart Disease",
-    allopathic: [
-      {
-        name: "Aspirin",
-        dosage: "75-325mg",
-        frequency: "Once daily",
-        notes: "Prevents blood clots, reduces risk of heart attack",
-      },
-      {
-        name: "Atorvastatin",
-        dosage: "10-80mg",
-        frequency: "Once daily",
-        notes: "Lowers cholesterol levels significantly",
-      },
-      {
-        name: "Lisinopril",
-        dosage: "2.5-20mg",
-        frequency: "Once daily",
-        notes: "Lowers blood pressure, protects heart",
-      },
-    ],
-    ayurvedic: [
-      {
-        name: "Arjuna Bark",
-        dosage: "3-5 grams",
-        frequency: "Twice daily with water",
-        notes: "Strengthens heart muscles, improves circulation",
-      },
-      {
-        name: "Ashwagandha",
-        dosage: "500-1000mg",
-        frequency: "Daily",
-        notes: "Reduces stress, lowers blood pressure naturally",
-      },
-      {
-        name: "Ginger",
-        dosage: "2-3 grams",
-        frequency: "Daily in tea or food",
-        notes: "Improves blood flow, anti-inflammatory properties",
-      },
-    ],
-    exercises: [
-      {
-        name: "Aerobic Walking",
-        duration: "30-40 minutes",
-        frequency: "5 days per week",
-        benefits: "Strengthens heart, improves cardiovascular health",
-      },
-      {
-        name: "Yoga (Heart-friendly poses)",
-        duration: "20-30 minutes",
-        frequency: "Daily",
-        benefits: "Reduces stress, improves circulation",
-      },
-      {
-        name: "Swimming",
-        duration: "30 minutes",
-        frequency: "3 times per week",
-        benefits: "Low-impact cardio, strengthens heart without strain",
-      },
-      {
-        name: "Light Cycling",
-        duration: "30 minutes",
-        frequency: "3-4 times per week",
-        benefits: "Improves heart rate, burns calories",
-      },
-    ],
-    homeRemedies: [
-      {
-        name: "Garlic & Honey",
-        ingredients: "3-4 garlic cloves, 1 teaspoon honey",
-        preparation: "Crush garlic, mix with honey, consume daily morning",
-        benefits: "Lowers cholesterol, improves heart health",
-      },
-      {
-        name: "Lemon & Water",
-        ingredients: "Fresh lemon juice, warm water, honey",
-        preparation: "Squeeze lemon in warm water, add honey, drink",
-        benefits: "Improves circulation, reduces blood pressure",
-      },
-      {
-        name: "Coconut Water",
-        ingredients: "1 fresh coconut water",
-        preparation: "Consume fresh coconut water directly",
-        benefits: "Rich in potassium, balances electrolytes, strengthens heart",
-      },
-      {
-        name: "Pomegranate Juice",
-        ingredients: "1 fresh pomegranate",
-        preparation: "Extract juice or consume fresh",
-        benefits: "Antioxidant powerhouse, improves blood flow",
-      },
-    ],
-  },
-  {
-    disease: "Hypertension",
-    allopathic: [
-      {
-        name: "Amlodipine",
-        dosage: "5-10mg",
-        frequency: "Once daily",
-        notes: "Calcium channel blocker, relaxes blood vessels",
-      },
-      {
-        name: "Enalapril",
-        dosage: "5-10mg",
-        frequency: "Once or twice daily",
-        notes: "ACE inhibitor, reduces blood pressure effectively",
-      },
-      {
-        name: "Losartan",
-        dosage: "25-100mg",
-        frequency: "Once daily",
-        notes: "ARB medication, blocks angiotensin II receptor",
-      },
-    ],
-    ayurvedic: [
-      {
-        name: "Brahmi",
-        dosage: "1-2 grams",
-        frequency: "Daily",
-        notes: "Calms nervous system, reduces stress-induced hypertension",
-      },
-      {
-        name: "Sarpagandha (Rauwolfia)",
-        dosage: "100-200mg",
-        frequency: "Daily",
-        notes: "Traditional Ayurvedic remedy for blood pressure",
-      },
-      {
-        name: "Turmeric",
-        dosage: "500-1000mg",
-        frequency: "Daily in food or milk",
-        notes: "Anti-inflammatory, improves circulation",
-      },
-    ],
-    exercises: [
-      {
-        name: "Meditation",
-        duration: "15-20 minutes",
-        frequency: "Daily",
-        benefits: "Reduces stress, lowers blood pressure naturally",
-      },
-      {
-        name: "Pranayama (Breathing)",
-        duration: "10-15 minutes",
-        frequency: "Daily",
-        benefits: "Calms mind, regulates blood pressure",
-      },
-      {
-        name: "Gentle Yoga",
-        duration: "20-30 minutes",
-        frequency: "5 days per week",
-        benefits: "Relaxes body, improves flexibility",
-      },
-      {
-        name: "Walking",
-        duration: "30 minutes",
-        frequency: "Daily",
-        benefits: "Low-impact cardio, effective BP control",
-      },
-    ],
-    homeRemedies: [
-      {
-        name: "Banana & Milk",
-        ingredients: "1 banana, 1 cup milk",
-        preparation: "Blend banana with milk, consume daily",
-        benefits: "Rich in potassium, reduces blood pressure",
-      },
-      {
-        name: "Hibiscus Tea",
-        ingredients: "1 teaspoon dried hibiscus, 1 cup hot water",
-        preparation: "Steep hibiscus in hot water, strain, drink warm",
-        benefits: "Natural blood pressure reducer",
-      },
-      {
-        name: "Coconut Oil",
-        ingredients: "1 tablespoon virgin coconut oil",
-        preparation: "Use in cooking or consume directly daily",
-        benefits: "Contains heart-healthy fats, reduces BP",
-      },
-      {
-        name: "Celery Juice",
-        ingredients: "Fresh celery stalks",
-        preparation: "Extract juice or blend and strain",
-        benefits: "Contains compounds that relax blood vessel walls",
-      },
-    ],
-  },
-  {
-    disease: "Asthma",
-    allopathic: [
-      {
-        name: "Albuterol Inhaler",
-        dosage: "2 puffs",
-        frequency: "As needed",
-        notes: "Quick-relief bronchodilator for acute attacks",
-      },
-      {
-        name: "Fluticasone Inhaler",
-        dosage: "110-440 mcg",
-        frequency: "Twice daily",
-        notes: "Steroid inhaler prevents inflammation",
-      },
-      {
-        name: "Theophylline",
-        dosage: "300-400mg",
-        frequency: "Twice daily",
-        notes: "Relaxes bronchial muscles, improves breathing",
-      },
-    ],
-    ayurvedic: [
-      {
-        name: "Vasaka (Adhatoda)",
-        dosage: "1-2 grams",
-        frequency: "Twice daily",
-        notes: "Natural expectorant, clears respiratory passages",
-      },
-      {
-        name: "Ginger & Tulsi Tea",
-        dosage: "1 cup",
-        frequency: "Twice daily",
-        notes: "Soothes respiratory tract, reduces inflammation",
-      },
-      {
-        name: "Licorice Root",
-        dosage: "1 teaspoon",
-        frequency: "Twice daily",
-        notes: "Anti-inflammatory, soothing for airways",
-      },
-    ],
-    exercises: [
-      {
-        name: "Diaphragmatic Breathing",
-        duration: "10 minutes",
-        frequency: "Daily",
-        benefits: "Strengthens respiratory muscles, improves oxygen intake",
-      },
-      {
-        name: "Yoga (Pranayama)",
-        duration: "15-20 minutes",
-        frequency: "Daily",
-        benefits: "Expands lungs, improves breathing capacity",
-      },
-      {
-        name: "Swimming",
-        duration: "30 minutes",
-        frequency: "3-4 times per week",
-        benefits: "Safe cardio, builds respiratory endurance",
-      },
-      {
-        name: "Walking",
-        duration: "30 minutes",
-        frequency: "Daily or alternate days",
-        benefits: "Gentle cardio, improves lung function",
-      },
-    ],
-    homeRemedies: [
-      {
-        name: "Honey & Lemon",
-        ingredients: "1 teaspoon honey, fresh lemon juice, warm water",
-        preparation: "Mix all ingredients, drink warm",
-        benefits: "Soothes throat, reduces cough",
-      },
-      {
-        name: "Ginger & Honey",
-        ingredients: "1 inch fresh ginger, 1 teaspoon honey",
-        preparation: "Chew fresh ginger, follow with honey",
-        benefits: "Anti-inflammatory, opens airways",
-      },
-      {
-        name: "Turmeric Milk",
-        ingredients: "1/2 teaspoon turmeric, 1 cup warm milk",
-        preparation: "Mix turmeric in warm milk, drink before bed",
-        benefits: "Anti-inflammatory, promotes better sleep",
-      },
-      {
-        name: "Garlic & Mustard Oil",
-        ingredients: "3-4 garlic cloves, 2 tablespoons mustard oil",
-        preparation: "Heat mustard oil, add garlic, massage on chest",
-        benefits: "Improves circulation, eases breathing",
-      },
-    ],
-  },
-  {
-    disease: "Cold & Cough",
-    allopathic: [
-      {
-        name: "Paracetamol",
-        dosage: "500-1000mg",
-        frequency: "3-4 times daily",
-        notes: "Relieves fever and body aches",
-      },
-      {
-        name: "Dextromethorphan",
-        dosage: "10-20mg",
-        frequency: "Every 4-6 hours",
-        notes: "Suppresses cough, reduces irritation",
-      },
-      {
-        name: "Loratadine",
-        dosage: "10mg",
-        frequency: "Once daily",
-        notes: "Antihistamine for allergic symptoms",
-      },
-    ],
-    ayurvedic: [
-      {
-        name: "Giloy",
-        dosage: "1-2 pieces of stem",
-        frequency: "Daily",
-        notes: "Boosts immunity, fights infection",
-      },
-      {
-        name: "Ginger & Tulsi Tea",
-        dosage: "1 cup",
-        frequency: "3-4 times daily",
-        notes: "Soothes throat, expels phlegm",
-      },
-      {
-        name: "Licorice Root",
-        dosage: "1/2 teaspoon",
-        frequency: "Twice daily",
-        notes: "Soothing to throat, anti-inflammatory",
-      },
-    ],
-    exercises: [
-      {
-        name: "Rest & Sleep",
-        duration: "8-10 hours",
-        frequency: "Daily until recovery",
-        benefits: "Allows immune system to fight infection",
-      },
-      {
-        name: "Light Walking",
-        duration: "15-20 minutes",
-        frequency: "Alternate days",
-        benefits: "Gentle movement aids recovery",
-      },
-      {
-        name: "Deep Breathing",
-        duration: "5-10 minutes",
-        frequency: "3-4 times daily",
-        benefits: "Clears nasal passages, oxygenates body",
-      },
-      {
-        name: "Mild Stretching",
-        duration: "10 minutes",
-        frequency: "Daily",
-        benefits: "Prevents stiffness, promotes circulation",
-      },
-    ],
-    homeRemedies: [
-      {
-        name: "Honey & Ginger",
-        ingredients: "1 teaspoon honey, 1 tablespoon fresh ginger juice",
-        preparation: "Mix honey and ginger juice, consume directly",
-        benefits: "Soothes cough, warms body",
-      },
-      {
-        name: "Turmeric & Milk",
-        ingredients: "1/2 teaspoon turmeric, 1 cup warm milk, honey",
-        preparation: "Heat milk, add turmeric and honey, drink warm",
-        benefits: "Reduces inflammation, promotes sleep",
-      },
-      {
-        name: "Lemon Tea",
-        ingredients: "1 lemon, 1 cup hot water, 1 teaspoon honey",
-        preparation: "Squeeze lemon in hot water, add honey, drink",
-        benefits: "Rich in vitamin C, soothes throat",
-      },
-      {
-        name: "Salt Water Gargle",
-        ingredients: "1/2 teaspoon salt, 1 cup warm water",
-        preparation: "Mix salt in warm water, gargle twice daily",
-        benefits: "Kills bacteria, reduces throat pain",
-      },
-    ],
-  },
-];
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string | undefined;
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
 
+const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
+
+const buildPrompt = (disease: string) =>
+  `You are a medical AI assistant. The user has provided a disease or symptom: "${disease}".
+
+Provide comprehensive treatment recommendations. Return ONLY a valid JSON object with this exact structure (no markdown, no code fences, no extra text):
+{
+  "disease": "Standardized disease/condition name",
+  "image": "https://images.unsplash.com/photo-1631549916768-4119b295f78b?w=800&q=80",
+  "allopathic": [
+    { "name": "Medicine Name", "dosage": "e.g. 500mg", "frequency": "e.g. Twice daily", "notes": "Important note about this medicine" }
+  ],
+  "ayurvedic": [
+    { "name": "Herb/Remedy Name", "dosage": "e.g. 1 teaspoon", "frequency": "e.g. Once daily", "notes": "Benefits and usage note" }
+  ],
+  "exercises": [
+    { "name": "Exercise Name", "duration": "e.g. 20 minutes", "frequency": "e.g. Daily", "benefits": "How this exercise helps" }
+  ],
+  "homeRemedies": [
+    { "name": "Remedy Name", "ingredients": "List of ingredients", "preparation": "How to prepare", "benefits": "Benefits of this remedy" }
+  ]
+}
+
+Rules:
+- Provide 3-4 items per category
+- Use a real relevant Unsplash image URL
+- Be accurate, safe, and responsible
+- Always general guidance — not a substitute for professional medical advice
+- Return ONLY the JSON object, nothing else`;
+
+const extractJSON = (raw: string): DiseaseRecommendation => {
+  const cleaned = raw
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error("Could not parse AI response as JSON.");
+  }
+};
+
+/** PRIMARY: Groq — free, 14,400 req/day, very fast */
+const callGroq = async (disease: string): Promise<DiseaseRecommendation> => {
+  if (!GROQ_API_KEY || GROQ_API_KEY === "YOUR_GROQ_API_KEY_HERE") {
+    throw new Error("Groq API key not configured");
+  }
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: buildPrompt(disease) }],
+      temperature: 0.2,
+      max_tokens: 2048,
+    }),
+  });
+
+  if (response.status === 429) throw new Error("QUOTA:Groq rate limited");
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Groq error ${response.status}: ${err.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const rawText = data?.choices?.[0]?.message?.content;
+  if (!rawText) throw new Error("Empty response from Groq");
+  console.log("[MedicineRecommender] Groq succeeded");
+  return extractJSON(rawText);
+};
+
+/** FALLBACK: Gemini with model chain */
+const callGeminiWithFallback = async (disease: string): Promise<DiseaseRecommendation> => {
+  if (!GEMINI_API_KEY) throw new Error("Gemini API key not configured");
+  const prompt = buildPrompt(disease);
+  let lastError: Error = new Error("All Gemini models exhausted");
+
+  for (const model of GEMINI_MODELS) {
+    try {
+      console.log(`[MedicineRecommender] Trying Gemini model: ${model}`);
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+          }),
+        }
+      );
+
+      if (response.status === 429) {
+        console.warn(`[MedicineRecommender] ${model} quota hit, trying next...`);
+        lastError = new Error(`Rate limit on ${model}`);
+        continue;
+      }
+      if (!response.ok) {
+        const errBody = await response.text();
+        throw new Error(`Gemini ${response.status} (${model}): ${errBody.slice(0, 200)}`);
+      }
+
+      const data = await response.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) throw new Error(`Empty response from ${model}`);
+      console.log(`[MedicineRecommender] Gemini ${model} succeeded`);
+      return extractJSON(rawText);
+    } catch (err) {
+      if (err instanceof Error && (err.message.includes("Rate limit") || err.message.includes("QUOTA"))) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+};
+
+/** LAST RESORT: Supabase Edge Function */
+const callSupabaseFunction = async (disease: string): Promise<DiseaseRecommendation> => {
+  const { data, error } = await supabase.functions.invoke("medicine-recommender", {
+    body: { disease },
+  });
+  if (error) throw new Error(error.message || "Supabase function error");
+  if (!data || data.error) throw new Error(data?.error || "No data from Supabase function");
+  return data as DiseaseRecommendation;
+};
+
+// ─────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────
 const MedicineRecommender = () => {
   const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState("");
   const [selectedDisease, setSelectedDisease] = useState<DiseaseRecommendation | null>(null);
   const [searchResults, setSearchResults] = useState<DiseaseRecommendation[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const handleSearch = () => {
-    if (searchInput.trim() === "") {
+  const handleSearch = async (overrideQuery?: string) => {
+    const queryToUse = (overrideQuery || searchInput).trim();
+    if (!queryToUse) {
       toast.error("Please enter a disease name");
       return;
     }
+    if (overrideQuery) setSearchInput(overrideQuery);
 
-    const query = searchInput.toLowerCase();
-    const results = medicineDatabase.filter(item =>
-      item.disease.toLowerCase().includes(query)
-    );
-
-    setSearchResults(results);
+    setIsAnalyzing(true);
     setHasSearched(true);
     setSelectedDisease(null);
+    setSearchResults([]);
 
-    if (results.length === 0) {
-      toast.info("Disease not found in database. Try another search.");
+    try {
+      let finalData: DiseaseRecommendation | null = null;
+
+      // 1️⃣ Groq (free, fast, 14k req/day)
+      try {
+        finalData = await callGroq(queryToUse);
+      } catch (err) {
+        console.warn("[MedicineRecommender] Groq failed:", (err as Error).message);
+      }
+
+      // 2️⃣ Gemini (model fallback chain)
+      if (!finalData) {
+        try {
+          finalData = await callGeminiWithFallback(queryToUse);
+        } catch (err) {
+          console.warn("[MedicineRecommender] All Gemini models failed:", (err as Error).message);
+        }
+      }
+
+      // 3️⃣ Supabase Edge Function
+      if (!finalData) {
+        try {
+          console.log("[MedicineRecommender] Trying Supabase Edge Function...");
+          finalData = await callSupabaseFunction(queryToUse);
+        } catch (err) {
+          console.warn("[MedicineRecommender] Supabase function failed:", (err as Error).message);
+        }
+      }
+
+      if (!finalData) {
+        throw new Error(
+          "All AI services are unavailable right now. Please add a free Groq API key at console.groq.com or try again later."
+        );
+      }
+
+      setSearchResults([finalData]);
+
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          logActivity(user.id, "Medicine Recommender", "/medicine-recommender", "Completed", {
+            disease: queryToUse,
+          });
+        }
+      });
+    } catch (error: unknown) {
+      console.error("[MedicineRecommender] Fatal error:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to generate recommendations. Please try again."
+      );
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
   const handleSelectDisease = (disease: DiseaseRecommendation) => {
     setSelectedDisease(disease);
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        logActivity(user.id, "Medicine Recommender", "/medicine-recommender", "Completed", {
+          disease: disease.disease,
+        });
+      }
+    });
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 font-sans">
       <header className="border-b border-slate-200/50 bg-white/80 backdrop-blur-xl sticky top-0 z-40 shadow-sm">
         <div className="container flex h-20 items-center justify-between px-6">
           <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate("/dashboard")}
-              className="hover:bg-slate-100"
-            >
+            <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")} className="hover:bg-slate-100">
               <ChevronLeft className="h-5 w-5" />
             </Button>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 shadow-lg">
-              <Pill className="h-6 w-6 text-white" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 shadow-lg">
+              <Search className="h-6 w-6 text-white" />
             </div>
             <div>
-              <span className="text-xl font-display font-bold bg-gradient-to-r from-emerald-600 to-green-600 bg-clip-text text-transparent">
-                Medicine Recommender
+              <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-700 bg-clip-text text-transparent">
+                Medicine Search Engine
               </span>
-              <p className="text-xs text-muted-foreground">Find remedies for any disease</p>
+              <p className="text-xs text-muted-foreground">AI-Powered Health Guidance</p>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="container px-6 py-10">
         {!selectedDisease ? (
           <>
-            {/* Search Section */}
-            <Card className="border-0 shadow-lg bg-gradient-to-br from-emerald-50 to-green-50 mb-8">
-              <CardHeader>
-                <CardTitle className="text-2xl">Search for Disease Treatment</CardTitle>
-                <CardDescription>
-                  Enter a disease name to get comprehensive treatment recommendations
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="e.g., Diabetes, Heart Disease, Asthma, Cold..."
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && handleSearch()}
-                    className="flex-1 text-lg py-2"
-                  />
-                  <Button
-                    onClick={handleSearch}
-                    className="gap-2 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700"
-                    size="lg"
-                  >
-                    <Search className="h-5 w-5" />
-                    Search
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-white shadow-2xl mb-8 ring-1 ring-slate-100">
+                <Search className="h-12 w-12 text-blue-600 animate-pulse" />
+              </div>
+              <h1 className="text-6xl font-black text-slate-900 mb-4 tracking-tight">Medicine Search Engine</h1>
+              <p className="text-xl text-slate-600 mb-12 max-w-2xl font-medium">
+                Research treatments, meds, and remedies for any condition using advanced AI.
+              </p>
 
-            {/* Available Diseases */}
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold text-slate-900">Available Diseases</h2>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {medicineDatabase.map((disease, idx) => (
-                  <Card
-                    key={idx}
-                    className="cursor-pointer border-2 border-slate-200 hover:border-emerald-600 hover:shadow-lg transition-all hover:-translate-y-1 bg-white/60 backdrop-blur-sm group"
-                    onClick={() => {
-                      setSearchInput(disease.disease);
-                      handleSelectDisease(disease);
-                    }}
-                  >
-                    <CardHeader>
-                      <CardTitle className="text-lg text-slate-900 group-hover:text-emerald-700 transition-colors">
-                        {disease.disease}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 gap-3 text-sm mb-4">
-                        <div className="flex items-center gap-2">
-                          <Pill className="h-4 w-4 text-blue-600" />
-                          <span>{disease.allopathic.length} Medicines</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Leaf className="h-4 w-4 text-green-600" />
-                          <span>{disease.ayurvedic.length} Remedies</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Dumbbell className="h-4 w-4 text-orange-600" />
-                          <span>{disease.exercises.length} Exercises</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Lightbulb className="h-4 w-4 text-yellow-600" />
-                          <span>{disease.homeRemedies.length} Tips</span>
-                        </div>
-                      </div>
-                      <Button 
-                        className="w-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700"
-                        size="sm"
+              <div className="w-full max-w-3xl relative">
+                <div className="absolute inset-0 bg-blue-500/10 blur-[100px] -z-10 rounded-full" />
+                <Card className="border-0 shadow-2xl bg-white ring-1 ring-slate-200 rounded-2xl overflow-hidden">
+                  <CardContent className="p-2">
+                    <div className="flex items-center px-4">
+                      <Search className="h-6 w-6 text-slate-400 mr-3" />
+                      <Input
+                        id="disease-search-input"
+                        placeholder="Type a disease or symptom (e.g., Asthma, Migraine, Flu)..."
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                        className="flex-1 text-xl py-8 border-0 focus-visible:ring-0 shadow-none placeholder:text-slate-400 font-medium"
+                      />
+                      <Button
+                        id="disease-search-btn"
+                        onClick={() => handleSearch()}
+                        disabled={isAnalyzing}
+                        className="h-12 px-8 text-lg font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-lg hover:shadow-blue-200"
                       >
-                        Learn More
+                        {isAnalyzing ? <Loader2 className="h-5 w-5 animate-spin" /> : "Search"}
                       </Button>
-                    </CardContent>
-                  </Card>
-                ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="mt-8 flex flex-wrap justify-center gap-6 text-slate-500 font-bold text-sm uppercase tracking-wider">
+                  <span className="flex items-center gap-2 text-blue-600"><Pill className="h-4 w-4" /> Allopathic</span>
+                  <span className="flex items-center gap-2 text-emerald-600"><Leaf className="h-4 w-4" /> Ayurvedic</span>
+                  <span className="flex items-center gap-2 text-amber-600"><Lightbulb className="h-4 w-4" /> Remedies</span>
+                  <span className="flex items-center gap-2 text-orange-600"><Dumbbell className="h-4 w-4" /> Exercises</span>
+                </div>
               </div>
             </div>
-          </>
-        ) : (
-          <>
-            {/* Details View */}
-            <div className="mb-6">
-              <Button
-                variant="outline"
-                onClick={() => setSelectedDisease(null)}
-                className="gap-2 mb-6"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Back to Search
-              </Button>
 
-              <h1 className="text-4xl font-display font-bold text-slate-900 mb-2">
-                {selectedDisease.disease} - Treatment Guide
-              </h1>
-              <p className="text-lg text-slate-600">
-                Comprehensive recommendations for managing {selectedDisease.disease.toLowerCase()}
-              </p>
-            </div>
-
-            <div className="grid lg:grid-cols-2 gap-8 mb-8">
-              {/* Allopathic Medicines */}
-              <Card className="border-0 shadow-lg bg-white/60 backdrop-blur-sm">
-                <CardHeader className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-t-lg">
-                  <div className="flex items-center gap-2">
-                    <Pill className="h-6 w-6" />
-                    <CardTitle>Allopathic Medicines</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  <div className="space-y-4">
-                    {selectedDisease.allopathic.map((med, idx) => (
-                      <div
-                        key={idx}
-                        className="p-4 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors"
-                      >
-                        <p className="font-bold text-slate-900 text-lg">{med.name}</p>
-                        <div className="mt-2 space-y-1 text-sm">
-                          <p className="text-slate-700">
-                            <span className="font-semibold">Dosage:</span> {med.dosage}
-                          </p>
-                          <p className="text-slate-700">
-                            <span className="font-semibold">Frequency:</span> {med.frequency}
-                          </p>
-                          <p className="text-blue-700 mt-2 italic">{med.notes}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Ayurvedic Medicines */}
-              <Card className="border-0 shadow-lg bg-white/60 backdrop-blur-sm">
-                <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-t-lg">
-                  <div className="flex items-center gap-2">
-                    <Leaf className="h-6 w-6" />
-                    <CardTitle>Ayurvedic Medicines</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  <div className="space-y-4">
-                    {selectedDisease.ayurvedic.map((med, idx) => (
-                      <div
-                        key={idx}
-                        className="p-4 rounded-lg bg-green-50 border border-green-200 hover:bg-green-100 transition-colors"
-                      >
-                        <p className="font-bold text-slate-900 text-lg">{med.name}</p>
-                        <div className="mt-2 space-y-1 text-sm">
-                          <p className="text-slate-700">
-                            <span className="font-semibold">Dosage:</span> {med.dosage}
-                          </p>
-                          <p className="text-slate-700">
-                            <span className="font-semibold">Frequency:</span> {med.frequency}
-                          </p>
-                          <p className="text-green-700 mt-2 italic">{med.notes}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid lg:grid-cols-2 gap-8 mb-8">
-              {/* Exercises */}
-              <Card className="border-0 shadow-lg bg-white/60 backdrop-blur-sm">
-                <CardHeader className="bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-t-lg">
-                  <div className="flex items-center gap-2">
-                    <Dumbbell className="h-6 w-6" />
-                    <CardTitle>Recommended Exercises</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  <div className="space-y-4">
-                    {selectedDisease.exercises.map((exercise, idx) => (
-                      <div
-                        key={idx}
-                        className="p-4 rounded-lg bg-orange-50 border border-orange-200 hover:bg-orange-100 transition-colors"
-                      >
-                        <p className="font-bold text-slate-900 text-lg">{exercise.name}</p>
-                        <div className="mt-2 space-y-1 text-sm">
-                          <p className="text-slate-700">
-                            <span className="font-semibold">Duration:</span> {exercise.duration}
-                          </p>
-                          <p className="text-slate-700">
-                            <span className="font-semibold">Frequency:</span> {exercise.frequency}
-                          </p>
-                          <p className="text-orange-700 mt-2 italic">{exercise.benefits}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Home Remedies */}
-              <Card className="border-0 shadow-lg bg-white/60 backdrop-blur-sm">
-                <CardHeader className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white rounded-t-lg">
-                  <div className="flex items-center gap-2">
-                    <Lightbulb className="h-6 w-6" />
-                    <CardTitle>Home Remedies</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  <div className="space-y-4">
-                    {selectedDisease.homeRemedies.map((remedy, idx) => (
-                      <div
-                        key={idx}
-                        className="p-4 rounded-lg bg-yellow-50 border border-yellow-200 hover:bg-yellow-100 transition-colors"
-                      >
-                        <p className="font-bold text-slate-900 text-lg">{remedy.name}</p>
-                        <div className="mt-2 space-y-1 text-sm">
-                          <p className="text-slate-700">
-                            <span className="font-semibold">Ingredients:</span> {remedy.ingredients}
-                          </p>
-                          <p className="text-slate-700">
-                            <span className="font-semibold">Preparation:</span> {remedy.preparation}
-                          </p>
-                          <p className="text-yellow-700 mt-2 italic">{remedy.benefits}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Summary Card */}
-            <Card className="border-0 shadow-lg bg-gradient-to-r from-slate-900 to-slate-800 text-white">
-              <CardHeader>
-                <CardTitle className="text-2xl flex items-center gap-2">
-                  <Heart className="h-6 w-6" />
-                  Complete Treatment Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-4 gap-6">
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-blue-400">
-                      {selectedDisease.allopathic.length}
-                    </p>
-                    <p className="text-slate-300">Allopathic Options</p>
+            {isAnalyzing && (
+              <div className="max-w-4xl mx-auto mt-12">
+                <div className="flex flex-col items-center justify-center py-20 gap-6">
+                  <div className="relative">
+                    <div className="h-20 w-20 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin" />
+                    <Sparkles className="h-8 w-8 text-blue-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
                   </div>
                   <div className="text-center">
-                    <p className="text-3xl font-bold text-green-400">
-                      {selectedDisease.ayurvedic.length}
+                    <p className="text-xl font-bold text-slate-800">Analyzing with AI...</p>
+                    <p className="text-slate-500 mt-1">
+                      Generating treatment guide for{" "}
+                      <span className="font-semibold text-blue-600">{searchInput}</span>
                     </p>
-                    <p className="text-slate-300">Ayurvedic Options</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-orange-400">
-                      {selectedDisease.exercises.length}
-                    </p>
-                    <p className="text-slate-300">Exercise Programs</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-yellow-400">
-                      {selectedDisease.homeRemedies.length}
-                    </p>
-                    <p className="text-slate-300">Home Remedies</p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            )}
+
+            {!isAnalyzing && hasSearched && searchResults.length > 0 && (
+              <div className="max-w-4xl mx-auto space-y-6 mt-12">
+                <div className="flex items-center justify-between border-b pb-4">
+                  <h2 className="text-2xl font-bold text-slate-900">Treatment Results</h2>
+                  <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50 px-3 py-1">
+                    <Sparkles className="h-3 w-3 mr-1" /> AI Generated
+                  </Badge>
+                </div>
+                <div className="grid gap-6">
+                  {searchResults.map((disease, idx) => (
+                    <Card
+                      key={idx}
+                      className="cursor-pointer overflow-hidden border-0 shadow-xl hover:shadow-2xl transition-all bg-white group"
+                      onClick={() => handleSelectDisease(disease)}
+                    >
+                      <div className="flex flex-col h-full">
+                        <div className="p-8 flex-1 flex flex-col justify-between">
+                          <div>
+                            <h3 className="text-3xl font-black text-slate-900 mb-4 group-hover:text-blue-600 transition-colors uppercase">
+                              {disease.disease}
+                            </h3>
+                            <div className="flex flex-wrap gap-4 text-slate-600 font-medium mb-6">
+                              <span className="flex items-center gap-1.5 bg-blue-50 px-3 py-1 rounded-full text-blue-700"><Pill className="h-4 w-4" /> {disease.allopathic?.length || 0} Meds</span>
+                              <span className="flex items-center gap-1.5 bg-emerald-50 px-3 py-1 rounded-full text-emerald-700"><Leaf className="h-4 w-4" /> {disease.ayurvedic?.length || 0} Ayurvedic</span>
+                              <span className="flex items-center gap-1.5 bg-amber-50 px-3 py-1 rounded-full text-amber-700"><Lightbulb className="h-4 w-4" /> {disease.homeRemedies?.length || 0} Remedies</span>
+                              <span className="flex items-center gap-1.5 bg-orange-50 px-3 py-1 rounded-full text-orange-700"><Dumbbell className="h-4 w-4" /> {disease.exercises?.length || 0} Exercises</span>
+                            </div>
+                          </div>
+                          <Button className="w-fit px-8 bg-blue-600 hover:bg-blue-700 font-bold rounded-xl h-12 shadow-md">
+                            Open Treatment Guide →
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!isAnalyzing && hasSearched && searchResults.length === 0 && (
+              <div className="mt-16 text-center text-slate-400">
+                <p className="text-lg font-medium">No results found. Try a different disease name.</p>
+              </div>
+            )}
           </>
+        ) : (
+          <div className="max-w-6xl mx-auto">
+            <div className="mb-10">
+              <Button
+                variant="ghost"
+                onClick={() => setSelectedDisease(null)}
+                className="gap-2 mb-8 text-slate-600 font-bold hover:text-blue-600"
+              >
+                <ChevronLeft className="h-5 w-5" />
+                Back to Search Results
+              </Button>
+
+              <div className="flex flex-col md:flex-row gap-10 items-start">
+                <div className="flex-1">
+                  <h1 className="text-6xl font-black text-slate-900 mb-4 uppercase tracking-tighter">
+                    {selectedDisease.disease}
+                  </h1>
+                  <p className="text-2xl text-slate-500 font-medium mb-8">
+                    Complete Medical Recommendation &amp; Treatment Protocols
+                  </p>
+                  <div className="flex gap-4">
+                    <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 px-4 py-1 text-sm font-bold uppercase tracking-widest">Scientific</Badge>
+                    <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 px-4 py-1 text-sm font-bold uppercase tracking-widest">Natural</Badge>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-10 mb-10">
+              <Card className="border-0 shadow-xl bg-white rounded-3xl overflow-hidden">
+                <CardHeader className="bg-blue-600 text-white p-6">
+                  <div className="flex items-center gap-3">
+                    <Pill className="h-8 w-8" />
+                    <CardTitle className="text-2xl font-black uppercase tracking-tight">Allopathic Medicines</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-8">
+                  <div className="space-y-6">
+                    {selectedDisease.allopathic?.map((med, idx) => (
+                      <div key={idx} className="pb-6 border-b border-slate-100 last:border-0 last:pb-0">
+                        <p className="font-black text-xl text-slate-900 mb-2">{med.name}</p>
+                        <div className="grid grid-cols-2 gap-4 text-sm font-bold uppercase text-slate-500 mb-3">
+                          <span>Dosage: <span className="text-slate-900">{med.dosage}</span></span>
+                          <span>Frequency: <span className="text-slate-900">{med.frequency}</span></span>
+                        </div>
+                        <p className="text-slate-600 bg-blue-50 p-4 rounded-xl border-l-4 border-blue-600 italic">
+                          &ldquo;{med.notes}&rdquo;
+                        </p>
+                      </div>
+                    ))}
+                    {(!selectedDisease.allopathic || selectedDisease.allopathic.length === 0) && (
+                      <p className="text-slate-400 italic">Consult a doctor for allopathic recommendations.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-xl bg-white rounded-3xl overflow-hidden">
+                <CardHeader className="bg-emerald-600 text-white p-6">
+                  <div className="flex items-center gap-3">
+                    <Leaf className="h-8 w-8" />
+                    <CardTitle className="text-2xl font-black uppercase tracking-tight">Ayurvedic Medicines</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-8">
+                  <div className="space-y-6">
+                    {selectedDisease.ayurvedic?.map((med, idx) => (
+                      <div key={idx} className="pb-6 border-b border-slate-100 last:border-0 last:pb-0">
+                        <p className="font-black text-xl text-slate-900 mb-2">{med.name}</p>
+                        <div className="grid grid-cols-2 gap-4 text-sm font-bold uppercase text-slate-500 mb-3">
+                          <span>Dosage: <span className="text-slate-900">{med.dosage}</span></span>
+                          <span>Frequency: <span className="text-slate-900">{med.frequency}</span></span>
+                        </div>
+                        <p className="text-slate-600 bg-emerald-50 p-4 rounded-xl border-l-4 border-emerald-600 italic">
+                          &ldquo;{med.notes}&rdquo;
+                        </p>
+                      </div>
+                    ))}
+                    {(!selectedDisease.ayurvedic || selectedDisease.ayurvedic.length === 0) && (
+                      <p className="text-slate-400 italic">No Ayurvedic recommendations available.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-10 mb-20">
+              <Card className="border-0 shadow-xl bg-white rounded-3xl overflow-hidden">
+                <CardHeader className="bg-orange-600 text-white p-6">
+                  <div className="flex items-center gap-3">
+                    <Dumbbell className="h-8 w-8" />
+                    <CardTitle className="text-2xl font-black uppercase tracking-tight">Exercises</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-8">
+                  <div className="space-y-6">
+                    {selectedDisease.exercises?.map((ex, idx) => (
+                      <div key={idx} className="pb-6 border-b border-slate-100 last:border-0 last:pb-0">
+                        <p className="font-black text-xl text-slate-900 mb-2">{ex.name}</p>
+                        <div className="grid grid-cols-2 gap-4 text-sm font-bold uppercase text-slate-500 mb-3">
+                          <span>Duration: <span className="text-slate-900">{ex.duration}</span></span>
+                          <span>Frequency: <span className="text-slate-900">{ex.frequency}</span></span>
+                        </div>
+                        <p className="text-slate-600 bg-orange-50 p-4 rounded-xl border-l-4 border-orange-600 italic">
+                          &ldquo;{ex.benefits}&rdquo;
+                        </p>
+                      </div>
+                    ))}
+                    {(!selectedDisease.exercises || selectedDisease.exercises.length === 0) && (
+                      <p className="text-slate-400 italic">No exercise recommendations available.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-xl bg-white rounded-3xl overflow-hidden">
+                <CardHeader className="bg-amber-600 text-white p-6">
+                  <div className="flex items-center gap-3">
+                    <Lightbulb className="h-8 w-8" />
+                    <CardTitle className="text-2xl font-black uppercase tracking-tight">Home Remedies</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-8">
+                  <div className="space-y-6">
+                    {selectedDisease.homeRemedies?.map((rem, idx) => (
+                      <div key={idx} className="pb-6 border-b border-slate-100 last:border-0 last:pb-0">
+                        <p className="font-black text-xl text-slate-900 mb-2">{rem.name}</p>
+                        <p className="text-sm font-bold uppercase text-slate-500 mb-1">
+                          Ingredients: <span className="text-slate-900">{rem.ingredients}</span>
+                        </p>
+                        <p className="text-sm font-bold uppercase text-slate-500 mb-3">
+                          Preparation: <span className="text-slate-900">{rem.preparation}</span>
+                        </p>
+                        <p className="text-slate-600 bg-amber-50 p-4 rounded-xl border-l-4 border-amber-600 italic">
+                          &ldquo;{rem.benefits}&rdquo;
+                        </p>
+                      </div>
+                    ))}
+                    {(!selectedDisease.homeRemedies || selectedDisease.homeRemedies.length === 0) && (
+                      <p className="text-slate-400 italic">No home remedies available.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="border-0 shadow-2xl bg-slate-900 text-white p-10 rounded-3xl text-center">
+              <Heart className="h-16 w-16 text-red-500 mx-auto mb-6" />
+              <h2 className="text-4xl font-black mb-6 uppercase tracking-tighter">Stay Safe &amp; Healthy</h2>
+              <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-8 font-medium">
+                These recommendations are generated by AI for informational purposes only. Always consult a
+                qualified medical professional before starting any treatment.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+                <div>
+                  <p className="text-4xl font-black text-blue-500 mb-1">{selectedDisease.allopathic?.length || 0}</p>
+                  <p className="text-sm font-bold uppercase text-slate-500">Allopathic</p>
+                </div>
+                <div>
+                  <p className="text-4xl font-black text-emerald-500 mb-1">{selectedDisease.ayurvedic?.length || 0}</p>
+                  <p className="text-sm font-bold uppercase text-slate-500">Ayurvedic</p>
+                </div>
+                <div>
+                  <p className="text-4xl font-black text-orange-500 mb-1">{selectedDisease.exercises?.length || 0}</p>
+                  <p className="text-sm font-bold uppercase text-slate-500">Exercises</p>
+                </div>
+                <div>
+                  <p className="text-4xl font-black text-amber-500 mb-1">{selectedDisease.homeRemedies?.length || 0}</p>
+                  <p className="text-sm font-bold uppercase text-slate-500">Remedies</p>
+                </div>
+              </div>
+            </Card>
+          </div>
         )}
       </main>
     </div>

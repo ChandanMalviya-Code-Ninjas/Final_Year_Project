@@ -7,12 +7,24 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Stethoscope, Loader2, AlertCircle, CheckCircle2, Info, Heart } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { logActivity } from "@/utils/analytics";
+
+interface PossibleCondition {
+  name: string;
+  probability: string;
+  severity: string;
+}
+
+interface AnalysisResults {
+  possibleConditions: PossibleCondition[];
+  recommendations: string[];
+}
 
 const SymptomChecker = () => {
   const navigate = useNavigate();
   const [symptoms, setSymptoms] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [results, setResults] = useState<any>(null);
+  const [results, setResults] = useState<AnalysisResults | null>(null);
 
   const handleAnalyze = async () => {
     if (!symptoms.trim()) {
@@ -21,7 +33,7 @@ const SymptomChecker = () => {
     }
 
     setIsAnalyzing(true);
-    
+
     try {
       const { data, error } = await supabase.functions.invoke('symptom-checker', {
         body: { symptoms }
@@ -30,7 +42,7 @@ const SymptomChecker = () => {
       if (error) throw error;
 
       setResults({
-        possibleConditions: data.conditions.map((c: any) => ({
+        possibleConditions: data.conditions.map((c: { name: string; severity: string }) => ({
           name: c.name,
           probability: c.severity === "high" ? "High" : c.severity === "medium" ? "Medium" : "Low",
           severity: c.severity.charAt(0).toUpperCase() + c.severity.slice(1)
@@ -38,9 +50,19 @@ const SymptomChecker = () => {
         recommendations: data.recommendations
       });
       toast.success("Analysis complete");
-    } catch (error: any) {
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        logActivity(user.id, "Symptom Check", "/symptom-checker", "Completed", {
+          symptoms: symptoms,
+          diagnosis: data.conditions[0]?.name,
+          severity: data.conditions[0]?.severity
+        });
+      }
+    } catch (error: unknown) {
       console.error("Symptom analysis error:", error);
-      toast.error(error.message || "Failed to analyze symptoms");
+      const message = error instanceof Error ? error.message : "Failed to analyze symptoms";
+      toast.error(message);
     } finally {
       setIsAnalyzing(false);
     }
@@ -121,8 +143,8 @@ const SymptomChecker = () => {
             </div>
 
             {/* Analyze Button */}
-            <Button 
-              onClick={handleAnalyze} 
+            <Button
+              onClick={handleAnalyze}
               disabled={isAnalyzing || !symptoms.trim()}
               className="w-full h-12 text-base font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl shadow-lg transition-all duration-200"
             >
@@ -149,9 +171,9 @@ const SymptomChecker = () => {
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white">Possible Conditions</h3>
                   </div>
                   <div className="space-y-3">
-                    {results.possibleConditions.map((condition: any, index: number) => (
-                      <Card 
-                        key={index} 
+                    {results.possibleConditions.map((condition: PossibleCondition, index: number) => (
+                      <Card
+                        key={index}
                         className={`p-5 border-2 transition-all duration-200 hover:shadow-md ${getSeverityColor(condition.severity)}`}
                       >
                         <div className="flex items-start justify-between gap-4">

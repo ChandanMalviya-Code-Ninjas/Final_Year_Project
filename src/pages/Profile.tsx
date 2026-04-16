@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, User, Loader2, LogOut, Heart, Phone, MapPin, Mail, Shield, Clock, Activity, AlertCircle, Save, Edit2, Camera } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { logActivity } from "@/utils/analytics";
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -86,8 +87,18 @@ const Profile = () => {
       setOriginalProfile(profile);
       setIsEditing(false);
       toast.success("Profile updated successfully");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update profile");
+      // Log profile update to activity history
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        logActivity(currentUser.id, "Profile Updated", "/profile", "Completed", {
+          fieldsUpdated: Object.keys(profile).filter(
+            k => profile[k as keyof typeof profile] !== originalProfile[k as keyof typeof originalProfile]
+          )
+        });
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to update profile";
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }

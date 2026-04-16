@@ -5,16 +5,118 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, MapPin, Phone, Navigation, Clock, ExternalLink, Star, ChevronDown, ChevronUp, Calendar, User, Stethoscope, AlertCircle, CheckCircle } from "lucide-react";
+import { ArrowLeft, MapPin, Phone, Navigation, Clock, ExternalLink, Star, ChevronDown, ChevronUp, Calendar, User, Stethoscope, AlertCircle, CheckCircle, LocateFixed } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { logActivity } from "@/utils/analytics";
+import { useRef } from "react";
+
+interface OverpassElement {
+  type: string;
+  id: number;
+  lat?: number;
+  lon?: number;
+  center?: {
+    lat: number;
+    lon: number;
+  };
+  tags?: {
+    amenity?: string;
+    name?: string;
+    healthcare?: string;
+    [key: string]: string | undefined;
+  };
+}
+
+interface TimeSlot {
+  time: string;
+  available: boolean;
+}
+
+interface Doctor {
+  id: string;
+  name: string;
+  specialty: string;
+  experience: string;
+  rating: string;
+  timeSlots: Record<string, string[]>;
+}
+
+interface OpeningHours {
+  [day: string]: {
+    open: string;
+    close: string;
+    available: boolean;
+  };
+}
+
+interface Hospital {
+  id: string | number;
+  name: string;
+  lat: number;
+  lon: number;
+  distance: string;
+  type: string;
+  address?: string;
+  phone?: string;
+  specialty?: string;
+  hours?: string;
+  rating?: string;
+  emergency?: boolean;
+  openingHours?: OpeningHours;
+  doctors?: Doctor[];
+}
+
 
 const HospitalFinder = () => {
   const navigate = useNavigate();
   const [location, setLocation] = useState("");
-  const [hospitals, setHospitals] = useState<any[]>([]);
+  const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [mapProvider, setMapProvider] = useState<string>("openstreetmap");
-  const [expandedHospital, setExpandedHospital] = useState<number | null>(null);
+  const [expandedHospital, setExpandedHospital] = useState<string | number | null>(null);
+
+  // Autocomplete state
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const handleLocationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setLocation(value);
+    
+    if (suggestionTimeout.current) {
+      clearTimeout(suggestionTimeout.current);
+    }
+    
+    if (value.trim().length > 2) {
+      suggestionTimeout.current = setTimeout(async () => {
+        try {
+          const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&countrycodes=in&limit=5`, {
+            headers: {
+              "Accept-Language": "en-US,en;q=0.9",
+              "User-Agent": "KeenCare-Bot/1.0"
+            }
+          });
+          const data = await response.json();
+          setSuggestions(data);
+          setShowSuggestions(true);
+        } catch (error) {
+          console.error("Autocomplete error:", error);
+        }
+      }, 500);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleSelectSuggestion = (suggestion: any) => {
+    setLocation(suggestion.display_name);
+    setShowSuggestions(false);
+    fetchFacilitiesByCoords(suggestion.lat, suggestion.lon, suggestion.display_name);
+  };
 
   // Sample data for fallback with enhanced doctor and hours info
   const sampleHospitals = [
@@ -334,6 +436,105 @@ const HospitalFinder = () => {
     }
   ];
 
+  const fetchFacilitiesByCoords = async (lat: string | number, lon: string | number, locationName: string) => {
+    setIsSearching(true);
+    try {
+      let hospitalList: Hospital[] = [];
+
+      const overpassQuery = `
+        [out:json];
+        (
+          node["amenity"="hospital"](around:10000,${lat},${lon});
+          way["amenity"="hospital"](around:10000,${lat},${lon});
+          node["amenity"="clinic"](around:10000,${lat},${lon});
+          way["amenity"="clinic"](around:10000,${lat},${lon});
+          node["amenity"="doctors"](around:10000,${lat},${lon});
+          way["amenity"="doctors"](around:10000,${lat},${lon});
+          node["amenity"="pharmacy"](around:10000,${lat},${lon});
+          way["amenity"="pharmacy"](around:10000,${lat},${lon});
+        );
+        out body;
+      `;
+
+      const overpassResponse = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'KeenCare-Bot/1.0'
+        },
+        body: `data=${encodeURIComponent(overpassQuery)}`
+      });
+
+      if (overpassResponse.ok) {
+        const data = await overpassResponse.json();
+        
+        hospitalList = data.elements.slice(0, 100).map((element: OverpassElement, index: number) => {
+          const hospitalLat = element.lat || element.center?.lat;
+          const hospitalLon = element.lon || element.center?.lon;
+          
+          const distance = hospitalLat && hospitalLon
+            ? calculateDistance(parseFloat(lat as string), parseFloat(lon as string), hospitalLat, hospitalLon)
+            : "N/A";
+
+          let type = "Medical Facility";
+          if (element.tags?.amenity === "hospital") type = "Hospital";
+          if (element.tags?.amenity === "clinic") type = "Clinic";
+          if (element.tags?.amenity === "doctors") type = "Doctor's Office";
+          if (element.tags?.amenity === "pharmacy") type = "Pharmacy";
+
+          const randomSample = sampleHospitals[index % sampleHospitals.length];
+
+          return {
+            id: element.id || index,
+            name: element.tags?.name || "Unnamed Medical Facility",
+            address: element.tags?.["addr:full"] || 
+                     `${element.tags?.["addr:street"] || ""} ${element.tags?.["addr:city"] || ""}`.trim() || 
+                     "Address not available",
+            phone: element.tags?.phone || element.tags?.["contact:phone"] || "Not available",
+            distance: typeof distance === "number" ? `${distance.toFixed(1)} km` : distance,
+            type: type,
+            hours: element.tags?.opening_hours || "Not specified",
+            rating: (Math.random() * 1 + 3.5).toFixed(1),
+            lat: hospitalLat || (parseFloat(lat as string) + (Math.random() - 0.5) * 0.1),
+            lon: hospitalLon || (parseFloat(lon as string) + (Math.random() - 0.5) * 0.1),
+            emergency: element.tags?.emergency === "yes" || type === "Hospital",
+            doctors: randomSample.doctors,
+            openingHours: randomSample.openingHours,
+          };
+        });
+      }
+
+      if (hospitalList.length === 0) {
+        toast.error(`No medical facilities found near ${locationName}`);
+      } else {
+        toast.success(`Found ${hospitalList.length} medical facilities near ${locationName}`);
+      }
+
+      hospitalList.sort((a: Hospital, b: Hospital) => {
+        if (a.distance === "N/A") return 1;
+        if (b.distance === "N/A") return -1;
+        return parseFloat(a.distance) - parseFloat(b.distance);
+      });
+
+      setHospitals(hospitalList);
+    } catch (error: unknown) {
+      console.error("Facility search error:", error);
+      setHospitals([]);
+      toast.error("Failed to fetch nearby medical facilities. Please try again.");
+    } finally {
+      setIsSearching(false);
+      
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          logActivity(user.id, "Hospital Search", "/hospital-finder", "Completed", { location: locationName });
+        }
+      } catch (err) {
+        console.error("Failed to log activity", err);
+      }
+    }
+  };
+
   const handleSearch = async () => {
     if (!location.trim()) {
       toast.error("Please enter a location");
@@ -343,101 +544,78 @@ const HospitalFinder = () => {
     setIsSearching(true);
     
     try {
-      // Try to use real API first
+      // Enhance search query for Indian PIN codes to prevent getting results from other countries
+      const isPinCode = /^\\d{6}$/.test(location.trim());
+      const searchQuery = isPinCode ? `${location.trim()}, India` : location.trim();
+      
       const geocodeResponse = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&limit=1`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&countrycodes=in&limit=1`,
+        {
+          headers: {
+            "Accept-Language": "en-US,en;q=0.9",
+            "User-Agent": "KeenCare-Bot/1.0"
+          }
+        }
       );
       const geocodeData = await geocodeResponse.json();
       
-      let hospitalList = [];
-
       if (geocodeData && geocodeData.length > 0) {
         const { lat, lon } = geocodeData[0];
-
-        // Find hospitals using Overpass API
-        const overpassQuery = `
-          [out:json];
-          (
-            node["amenity"="hospital"](around:10000,${lat},${lon});
-            way["amenity"="hospital"](around:10000,${lat},${lon});
-            node["amenity"="clinic"](around:10000,${lat},${lon});
-            way["amenity"="clinic"](around:10000,${lat},${lon});
-            node["amenity"="doctors"](around:10000,${lat},${lon});
-            way["amenity"="doctors"](around:10000,${lat},${lon});
-          );
-          out body;
-        `;
-
-        const overpassResponse = await fetch("https://overpass-api.de/api/interpreter", {
-          method: "POST",
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          body: `data=${encodeURIComponent(overpassQuery)}`
-        });
-
-        if (overpassResponse.ok) {
-          const data = await overpassResponse.json();
-          
-          hospitalList = data.elements.slice(0, 10).map((element: any, index: number) => {
-            const hospitalLat = element.lat || element.center?.lat;
-            const hospitalLon = element.lon || element.center?.lon;
-            
-            const distance = hospitalLat && hospitalLon
-              ? calculateDistance(parseFloat(lat), parseFloat(lon), hospitalLat, hospitalLon)
-              : "N/A";
-
-            let type = "Medical Facility";
-            if (element.tags?.amenity === "hospital") type = "Hospital";
-            if (element.tags?.amenity === "clinic") type = "Clinic";
-            if (element.tags?.amenity === "doctors") type = "Doctor's Office";
-
-            return {
-              id: element.id || index,
-              name: element.tags?.name || "Unnamed Medical Facility",
-              address: element.tags?.["addr:full"] || 
-                       `${element.tags?.["addr:street"] || ""} ${element.tags?.["addr:city"] || ""}`.trim() || 
-                       "Address not available",
-              phone: element.tags?.phone || element.tags?.["contact:phone"] || "Not available",
-              distance: typeof distance === "number" ? `${distance.toFixed(1)} km` : distance,
-              type: type,
-              hours: element.tags?.opening_hours || "Not specified",
-              rating: (Math.random() * 1 + 3.5).toFixed(1),
-              lat: hospitalLat || (parseFloat(lat) + (Math.random() - 0.5) * 0.1),
-              lon: hospitalLon || (parseFloat(lon) + (Math.random() - 0.5) * 0.1),
-              emergency: element.tags?.emergency === "yes"
-            };
-          });
-        }
-      }
-
-      // If no real data found, use sample data
-      if (hospitalList.length === 0) {
-        hospitalList = sampleHospitals.map(hospital => ({
-          ...hospital,
-          distance: hospital.distance
-        }));
-        toast.info("Showing sample medical facilities for demonstration");
+        await fetchFacilitiesByCoords(lat, lon, location);
       } else {
-        toast.success(`Found ${hospitalList.length} medical facilities near ${location}`);
+        toast.error("Location not found. Please try exploring on maps.");
+        setHospitals([]);
+        setIsSearching(false);
       }
-
-      // Sort by distance
-      hospitalList.sort((a: any, b: any) => {
-        if (a.distance === "N/A") return 1;
-        if (b.distance === "N/A") return -1;
-        return parseFloat(a.distance) - parseFloat(b.distance);
-      });
-
-      setHospitals(hospitalList);
-    } catch (error: any) {
-      console.error("Hospital search error:", error);
-      // Fallback to sample data
-      setHospitals(sampleHospitals);
-      toast.info("Showing sample medical facilities. Real data unavailable.");
-    } finally {
+    } catch (error: unknown) {
+      console.error("Geocoding error:", error);
+      setHospitals([]);
+      toast.error("Network error while searching for location.");
       setIsSearching(false);
     }
+  };
+
+  const handleUseMyLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          // Reverse geocode to get a readable name
+          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const data = await response.json();
+          let locationName = "Current Location";
+          
+          if (data && data.address) {
+            locationName = data.address.city || data.address.town || data.address.village || data.address.suburb || data.address.state_district || "Current Location";
+          }
+          
+          setLocation(locationName);
+          await fetchFacilitiesByCoords(latitude, longitude, locationName);
+        } catch (error) {
+          console.error("Reverse geocoding error:", error);
+          setLocation("Current Location");
+          await fetchFacilitiesByCoords(latitude, longitude, "Current Location");
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (error) => {
+        setIsLocating(false);
+        let errorMsg = "Unable to retrieve your location";
+        if (error.code === 1) errorMsg = "Location access denied by user";
+        else if (error.code === 2) errorMsg = "Position unavailable";
+        else if (error.code === 3) errorMsg = "Location request timed out";
+        toast.error(errorMsg);
+        console.error("Geolocation error:", error);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -452,7 +630,7 @@ const HospitalFinder = () => {
     return R * c;
   };
 
-  const handleGetDirections = (hospital: any) => {
+  const handleGetDirections = (hospital: Hospital) => {
     if (!hospital.lat || !hospital.lon) {
       toast.error("Location coordinates not available");
       return;
@@ -480,7 +658,7 @@ const HospitalFinder = () => {
     window.open(directionsUrl, '_blank');
   };
 
-  const handleViewOnMap = (hospital: any) => {
+  const handleViewOnMap = (hospital: Hospital) => {
     if (!hospital.lat || !hospital.lon) {
       toast.error("Location coordinates not available");
       return;
@@ -536,14 +714,46 @@ const HospitalFinder = () => {
           </CardHeader>
           <CardContent className="space-y-6 p-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-3">
+              <div className="md:col-span-3 relative w-full">
                 <Input
                   placeholder="Enter your location, city, or zip code..."
                   value={location}
-                  onChange={(e) => setLocation(e.target.value)}
+                  onChange={handleLocationChange}
                   onKeyPress={(e) => e.key === "Enter" && handleSearch()}
-                  className="h-12 text-lg border-2 border-blue-300 rounded-xl focus:border-blue-600"
+                  className="h-12 text-lg border-2 border-blue-300 rounded-xl focus:border-blue-600 pr-12 w-full"
+                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                 />
+                
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border-2 border-blue-200 dark:border-slate-700 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                    {suggestions.map((suggestion, index) => (
+                      <div 
+                        key={index}
+                        className="p-3 hover:bg-blue-50 dark:hover:bg-slate-700 cursor-pointer flex flex-col gap-1 border-b last:border-0 border-gray-100 dark:border-slate-700"
+                        onMouseDown={() => handleSelectSuggestion(suggestion)}
+                      >
+                        <span className="font-medium text-gray-900 dark:text-gray-100 line-clamp-1">
+                          {suggestion.display_name.split(',')[0]}
+                        </span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+                          {suggestion.display_name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-2 top-2 h-8 w-8 text-blue-600 hover:text-blue-800 hover:bg-blue-100/50 rounded-full"
+                  onClick={handleUseMyLocation}
+                  disabled={isLocating || isSearching}
+                  title="Use My Location"
+                >
+                  <LocateFixed className={`h-5 w-5 ${isLocating ? 'animate-pulse text-indigo-500' : ''}`} />
+                </Button>
               </div>
               <Button 
                 onClick={handleSearch} 
@@ -663,7 +873,7 @@ const HospitalFinder = () => {
                             Week Hours
                           </h4>
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {Object.entries(hospital.openingHours).map(([day, hours]: [string, any]) => (
+                            {Object.entries(hospital.openingHours).map(([day, hours]: [string, { open: string; close: string; available: boolean; }]) => (
                               <div 
                                 key={day}
                                 className={`p-3 rounded-lg border-2 ${
@@ -692,7 +902,7 @@ const HospitalFinder = () => {
                             Available Doctors ({hospital.doctors.length})
                           </h4>
                           <div className="space-y-3">
-                            {hospital.doctors.map((doctor: any) => (
+                            {hospital.doctors.map((doctor: Doctor) => (
                               <div 
                                 key={doctor.id}
                                 className="bg-white dark:bg-slate-700 p-4 rounded-lg border-2 border-blue-200 dark:border-slate-600 hover:shadow-lg transition-all"

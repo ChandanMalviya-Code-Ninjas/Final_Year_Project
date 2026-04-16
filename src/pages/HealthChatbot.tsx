@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Bot, Send, User, Heart, Stethoscope, Sparkles, Activity } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
+import { supabase } from "@/integrations/supabase/client";
+import { logActivity } from "@/utils/analytics";
 
 interface Message {
   role: "user" | "assistant";
@@ -43,7 +45,7 @@ const HealthChatbot = () => {
 
     try {
       const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/health-chat`;
-      
+
       const response = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
@@ -89,6 +91,14 @@ const HealthChatbot = () => {
           const jsonStr = line.slice(6).trim();
           if (jsonStr === "[DONE]") {
             streamDone = true;
+            try {
+              const { data: { user } } = await supabase.auth.getUser();
+              if (user) {
+                logActivity(user.id, "Health Chat", "/health-chatbot", "Completed", { query: input });
+              }
+            } catch (err) {
+              console.error("Failed to log chat interaction", err);
+            }
             break;
           }
 
@@ -198,8 +208,8 @@ const HealthChatbot = () => {
             </div>
           </CardHeader>
 
-          <CardContent className="flex-1 flex flex-col p-6 bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-800/50 dark:to-slate-900">
-            <ScrollArea className="flex-1 pr-4 mb-6 rounded-lg bg-white dark:bg-slate-800/50">
+          <CardContent className="flex-1 flex flex-col min-h-0 p-6 bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-800/50 dark:to-slate-900">
+            <div className="flex-1 overflow-y-auto pr-4 mb-6 rounded-lg bg-white dark:bg-slate-800/50">
               <div className="space-y-4 p-4">
                 {messages.length === 1 && (
                   <div className="flex justify-center my-4">
@@ -221,11 +231,10 @@ const HealthChatbot = () => {
                       </div>
                     )}
                     <div
-                      className={`rounded-2xl px-5 py-4 max-w-[65%] transition-all duration-200 ${
-                        message.role === "user"
+                      className={`rounded-2xl px-5 py-4 max-w-[65%] transition-all duration-200 ${message.role === "user"
                           ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-br-3xl shadow-lg border border-blue-500/50"
                           : "bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-bl-3xl shadow-md border border-slate-300 dark:border-slate-600"
-                      }`}
+                        }`}
                     >
                       <p className="text-sm leading-relaxed break-words">{message.content}</p>
                     </div>
@@ -255,9 +264,9 @@ const HealthChatbot = () => {
                 )}
                 <div ref={messagesEndRef} />
               </div>
-            </ScrollArea>
+            </div>
 
-            <div className="flex gap-3 border-t-2 border-slate-300 dark:border-slate-700 pt-4">
+            <div className="flex gap-3 border-t-2 border-slate-300 dark:border-slate-700 pt-4 shrink-0">
               <Input
                 placeholder="Ask about symptoms, fitness, diet, or health concerns..."
                 value={input}
@@ -265,14 +274,13 @@ const HealthChatbot = () => {
                 onKeyPress={(e) => e.key === "Enter" && !isTyping && handleSend()}
                 className="border-2 border-blue-300 dark:border-blue-700 rounded-xl focus:border-blue-600 focus:ring-4 focus:ring-blue-200 dark:focus:ring-blue-900/40 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition-all duration-200 placeholder:text-slate-500"
               />
-              <Button 
-                onClick={handleSend} 
+              <Button
+                onClick={handleSend}
                 disabled={!input.trim()}
-                className={`h-12 px-8 text-white rounded-xl shadow-lg transition-all duration-200 font-semibold flex items-center gap-2 ${
-                  isTyping 
-                    ? "bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:via-orange-600 hover:to-red-600" 
+                className={`h-12 px-8 text-white rounded-xl shadow-lg transition-all duration-200 font-semibold flex items-center gap-2 ${isTyping
+                    ? "bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:via-orange-600 hover:to-red-600"
                     : "bg-gradient-to-r from-blue-600 via-cyan-500 to-green-600 hover:from-blue-700 hover:via-cyan-600 hover:to-green-700"
-                }`}
+                  }`}
               >
                 <Send className={`h-5 w-5 ${isTyping ? "animate-spin" : ""}`} />
                 <span className="hidden sm:inline">{isTyping ? "Diagnosing..." : "Ask"}</span>
