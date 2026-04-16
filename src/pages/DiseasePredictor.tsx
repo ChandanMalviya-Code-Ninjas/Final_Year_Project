@@ -23,14 +23,16 @@ import {
   ShieldCheck,
   AlertTriangle,
   RotateCcw,
-  ClipboardList
+  ClipboardList,
+  ExternalLink,
+  Monitor
 } from "lucide-react";
 import { logActivity } from "@/utils/analytics";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────
-type PredictorStep = "QUESTIONS" | "RESULT_ROUTING" | "PARAMETER_FORM" | "PREDICTING" | "RESULTS";
+type PredictorStep = "QUESTIONS" | "RESULT_ROUTING" | "PARAMETER_FORM" | "PREDICTING" | "RESULTS" | "CLASSIC_ML";
 type DiseaseType = "diabetes" | "heart" | "parkinsons";
 
 interface SymptomQuestion {
@@ -371,17 +373,37 @@ const DiseasePredictor = () => {
           <Card className="border-none shadow-premium bg-white dark:bg-slate-900 overflow-hidden relative">
             <div className="absolute top-0 left-0 w-1 bg-primary h-full" />
             <CardHeader className="pb-4">
-              <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <Activity className="h-7 w-7" />
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <Activity className="h-7 w-7" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-3xl font-bold font-display">Disease Predictor AI</CardTitle>
+                      <CardDescription className="text-base">
+                        Answer health questions → Get AI-powered disease prediction
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="flex shadow-sm gap-2 border-primary/20 hover:bg-primary/5"
+                    onClick={() => setCurrentStep(currentStep === "CLASSIC_ML" ? "QUESTIONS" : "CLASSIC_ML")}
+                  >
+                    {currentStep === "CLASSIC_ML" ? (
+                      <>
+                        <Activity className="h-4 w-4" />
+                        Back to Smart Assessment
+                      </>
+                    ) : (
+                      <>
+                        <Monitor className="h-4 w-4" />
+                        Classic ML Dashboard
+                      </>
+                    )}
+                  </Button>
                 </div>
-                <div>
-                  <CardTitle className="text-3xl font-bold font-display">Disease Predictor AI</CardTitle>
-                  <CardDescription className="text-base">
-                    Answer health questions → Get AI-powered disease prediction
-                  </CardDescription>
-                </div>
-              </div>
             </CardHeader>
           </Card>
 
@@ -757,6 +779,49 @@ const DiseasePredictor = () => {
                       Return to Dashboard
                     </Button>
                   </div>
+                </div>
+              )}
+
+              {/* ─── Step 6: CLASSIC_ML (Streamlit Iframe) ─── */}
+              {currentStep === "CLASSIC_ML" && (
+                <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
+                  <div className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-blue-100 dark:bg-blue-800 rounded-lg">
+                        <Monitor className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-blue-900 dark:text-blue-100 uppercase text-xs tracking-wider">EXPERIMENTAL</p>
+                        <p className="text-sm text-blue-700 dark:text-blue-300">Classic Streamlit ML Backend</p>
+                      </div>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-100/50"
+                      onClick={() => window.open(import.meta.env.VITE_STREAMLIT_URL || "https://share.streamlit.io/", "_blank")}
+                    >
+                      Open Full Page
+                      <ExternalLink className="ml-2 h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="relative rounded-2xl overflow-hidden border-2 border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-inner h-[800px]">
+                    <iframe 
+                      src={import.meta.env.VITE_STREAMLIT_URL || "https://share.streamlit.io/"}
+                      className="w-full h-full border-0"
+                      title="Classic ML Predictor"
+                      allow="geolocation; microphone; camera"
+                    />
+                  </div>
+
+                  <Alert className="bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Streamlit Integration</AlertTitle>
+                    <AlertDescription className="text-xs">
+                      This view provides direct access to the legacy Python-based models. For the best experience on mobile, we recommend using the Smart Assessment mode.
+                    </AlertDescription>
+                  </Alert>
                 </div>
               )}
 
