@@ -1,0 +1,4 @@
+model_type=LogisticRegression
+needs_scaler=yes
+best_name=Logistic Regression
+cv_accuracy=83.5
